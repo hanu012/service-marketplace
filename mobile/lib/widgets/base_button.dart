@@ -103,8 +103,11 @@ class _Label extends StatelessWidget {
 
     final label = BaseText(
       text: buttonText ?? '',
-      // Dark ink on the teal accent: white on teal-400 fails contrast.
-      color: textColor ?? ColorRes.backgroundColor,
+      // White on the violet accent: 4.2:1 on violet-500 and 7.0:1 on
+      // violet-700, versus 4.4:1 for dark ink — equivalent contrast, and white
+      // is what the design language calls for. (Under the old teal-400 accent
+      // this defaulted to dark ink, where white genuinely failed.)
+      color: textColor ?? ColorRes.whiteColor,
       fontSize: fontSize ?? Utils.getFontSize(16),
       fontWeight: fontWeight ?? FontWeight.w500,
       fontFamily: fontFamily ?? FontFamily.dmSans,

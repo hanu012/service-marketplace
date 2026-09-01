@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ResendVerificationRequest;
 use App\Http\Responses\ApiResponse;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
@@ -66,7 +67,10 @@ class EmailVerificationController extends Controller
         $user = $request->user()
             ?? User::where('email', $request->string('email')->toString())->first();
 
-        if ($user && ! $user->hasVerifiedEmail()) {
+        // Matches register(): with bypass_email_verification on, nothing is
+        // sent — verification is an admin action, so there is no link to
+        // resend.
+        if ($user && ! $user->hasVerifiedEmail() && ! Setting::get('bypass_email_verification', false)) {
             $user->sendEmailVerificationNotification();
         }
 

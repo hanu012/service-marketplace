@@ -61,6 +61,14 @@ enum Permission: string
     case BannersUpdate = 'banners.update';
     case BannersDelete = 'banners.delete';
 
+    case PagesViewAny = 'pages.viewAny';
+    case PagesCreate = 'pages.create';
+    case PagesUpdate = 'pages.update';
+
+    // System
+    case SettingsViewAny = 'settings.viewAny';
+    case SettingsUpdate = 'settings.update';
+
     /**
      * Grants everything. Held only by super-admins.
      */

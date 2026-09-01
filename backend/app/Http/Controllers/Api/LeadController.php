@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateLeadRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\Lead;
+use App\Services\PushNotificationService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -16,6 +17,8 @@ use Illuminate\Http\JsonResponse;
  */
 class LeadController extends Controller
 {
+    public function __construct(private readonly PushNotificationService $notifications) {}
+
     public function store(CreateLeadRequest $request): JsonResponse
     {
         $customer = $request->user()->customer;
@@ -31,6 +34,12 @@ class LeadController extends Controller
             'zone_id' => $request->filled('zone_id') ? $request->integer('zone_id') : null,
             'channel' => $request->string('channel')->toString(),
         ]);
+
+        // BUILD_PLAN 7.2 — "lead received," never allowed to break
+        // this write: FcmChannel already swallows send failures
+        // internally, so a bad token or FCM outage can't turn a
+        // successful lead record into a failed response.
+        $this->notifications->notifyLeadReceived($lead);
 
         return ApiResponse::success([
             'id' => $lead->id,

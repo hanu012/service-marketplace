@@ -27,8 +27,8 @@ class SubscriptionAddOnEndpointTest extends TestCase
 
         Salesman::create([
             'user_id' => $user->id,
-            'employee_code' => 'EMP-'.random_int(1000, 9999),
-            'phone' => '99000000'.random_int(10, 99),
+            'employee_code' => 'EMP-'.fake()->unique()->numberBetween(1000, 9999),
+            'phone' => (string) fake()->unique()->numberBetween(9000000000, 9999999999),
             'commission_rate_bps' => 1000,
         ]);
 

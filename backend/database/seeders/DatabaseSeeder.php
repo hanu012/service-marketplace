@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             ZoneSeeder::class,
             PlanSeeder::class,
             SettingSeeder::class,
+            CmsPageSeeder::class,
         ]);
     }
 }

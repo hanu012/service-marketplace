@@ -170,8 +170,14 @@ the old ones, not "improve" on the pattern.
   the existing files.
 
 ## Theme
-Dark by default, user-switchable (not forced). Verified values from the
-Filament panel — use the same direction in Flutter:
+Dark by default, user-switchable (not forced).
+
+**The two products currently use different accents.** This is a known,
+unresolved divergence — not an accident to be "fixed" by whichever file
+you happen to be editing. Pick a direction deliberately before changing
+either side.
+
+**Filament admin — teal.** Verified values from the panel:
 - Primary accent: teal-400 `#2dd4bf`
 - Surface: slate-900 `#0f172a`
 - Page background: slate-950 `#020617` — deliberately not pure black
@@ -179,6 +185,22 @@ Teal specifically avoids colliding with Filament's reserved red/amber for
 destructive/warning states — don't "simplify" to amber later, it breaks
 status legibility. No custom Tailwind build for the admin — Filament's
 panel-provider color config is sufficient, no npm build step needed.
+
+**Flutter apps — violet**, adopted from the auth reference design:
+- Primary accent: violet-500 `#8b5cf6`
+- Surface: `#16102e`
+- Page background: `#0b0716` — likewise not pure black
+Values live in `mobile/lib/constants/color_res.dart`, which is the single
+source of truth for the apps; `widget_test.dart` asserts them against this
+list, so the two move together or the suite fails.
+
+Contrast rules that are load-bearing in the violet palette, verified by
+calculation rather than by eye:
+- Button labels are **white**, not dark ink (4.2:1 on violet-500).
+- Button gradients run violet-500 → violet-700. Never start one at
+  violet-400: white on it is 2.7:1 and fails AA.
+- Body-sized links use violet-400 (7.0:1 on the canvas). Violet-500 is
+  4.4:1 there, which misses AA for text under 18pt.
 
 ## Roles
 admin | salesman | vendor | customer — enforced with Laravel Policies +

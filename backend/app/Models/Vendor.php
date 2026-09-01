@@ -144,30 +144,51 @@ class Vendor extends Model
     }
 
     /**
-     * The subscription the vendor dashboard and services-management screens
-     * both key off (task 4.2/4.4) — active and not yet past its end date.
-     * Not a relation: it needs a `where`/`latest` beyond what a plain
-     * `hasOne` expresses, same reasoning `scopeActive()` needing the
-     * subscription-currency check documents.
+     * The subscription the vendor dashboard, services-management
+     * screens, and the public vendor detail page all key off (task
+     * 4.2/4.4, widened in task 7.1). Not a relation: it needs a
+     * `where`/`latest` beyond what a plain `hasOne` expresses, same
+     * reasoning `scopeActive()` needing the subscription-currency
+     * check documents.
+     *
+     * WIDENED beyond a flat "active and not past end_date" (task
+     * 7.1): SPEC section 7 treats Grace as a still-visible renewal
+     * window, so a `grace` subscription still counts here as long as
+     * it's within `grace_period_days` of its `end_date` — see
+     * VendorSearchService's class docblock for the full reasoning,
+     * since this method is meant to stay in lockstep with that query
+     * (VendorDetailController's own comment says as much).
      */
     public function currentActiveSubscription(): ?Subscription
     {
+        $today = now()->startOfDay();
+        $gracePeriodDays = (int) Setting::get('grace_period_days', 7);
+        $graceCutoff = $today->copy()->subDays($gracePeriodDays);
+
         return $this->subscriptions()
-            ->where('status', 'active')
-            ->where('end_date', '>=', now())
+            ->where(function ($query) use ($today, $graceCutoff) {
+                $query->where(function ($active) use ($today) {
+                    $active->where('status', 'active')->where('end_date', '>=', $today);
+                })->orWhere(function ($grace) use ($graceCutoff) {
+                    $grace->where('status', 'grace')->where('end_date', '>=', $graceCutoff);
+                });
+            })
             ->with('plan.quota')
             ->latest('end_date')
             ->first();
     }
 
     /**
-     * Visible to customers only when active and not suspended — and, per
-     * SPEC section 4.4, only alongside an unexpired subscription, which the
-     * matching query adds.
+     * Visible to customers only when not suspended and either active
+     * or in grace — and, per SPEC section 4.4, only alongside an
+     * unexpired-or-in-grace subscription, which the matching query
+     * (or currentActiveSubscription()) adds. Widened from
+     * active-only in task 7.1 — see VendorSearchService's class
+     * docblock.
      */
     public function scopeActive($query)
     {
-        return $query->where('status', 'active')->where('is_suspended', false);
+        return $query->whereIn('status', ['active', 'grace'])->where('is_suspended', false);
     }
 
     /**

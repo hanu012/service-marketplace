@@ -114,6 +114,34 @@ class VendorDetailEndpointTest extends TestCase
         $this->getJson("/api/vendors/{$vendor->id}/detail")->assertStatus(404);
     }
 
+    // ── Grace window (task 7.1) ─────────────────────────────────────────
+
+    /**
+     * Mirrors VendorSearchEndpointTest's grace coverage — the detail
+     * page must stay in lockstep with search (its own comment says
+     * "same visibility floor"), or a vendor could appear in results
+     * and then 404 the moment a customer taps in.
+     */
+    public function test_a_vendor_within_the_grace_window_still_resolves(): void
+    {
+        [$vendor, $subscription] = $this->activeVendorWithSubscription();
+        $vendor->update(['status' => 'grace']);
+        $subscription->update(['status' => 'grace', 'end_date' => now()->subDays(3)]);
+
+        $this->getJson("/api/vendors/{$vendor->id}/detail")
+            ->assertOk()
+            ->assertJsonPath('data.id', $vendor->id);
+    }
+
+    public function test_a_vendor_past_the_grace_window_is_not_found(): void
+    {
+        [$vendor, $subscription] = $this->activeVendorWithSubscription();
+        $vendor->update(['status' => 'grace']);
+        $subscription->update(['status' => 'grace', 'end_date' => now()->subDays(10)]);
+
+        $this->getJson("/api/vendors/{$vendor->id}/detail")->assertStatus(404);
+    }
+
     public function test_a_nonexistent_vendor_is_not_found(): void
     {
         $this->getJson('/api/vendors/999999/detail')->assertStatus(404);

@@ -203,6 +203,31 @@ discovered during development and must all be cleared before going live
       server-side (a queued job calling a hosted transcoding service).
       *(Found in task 4.5.)*
 
+- [ ] **Create a real Firebase project and set `FCM_PROJECT_ID`/
+      `FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY_BASE64` from a real service
+      account.** Same situation as R2: no credentials exist in this dev
+      environment, so `FcmClient` has never made a real call to FCM.
+      Unlike R2's silent local-disk fallback, a blank/missing FCM
+      credential fails **loudly** — `FcmClient::requireConfig()` throws
+      the moment a push is attempted — and `FcmChannel` catches that
+      per-device, so it shows up as `failed_count` on the
+      `notifications` dispatch row rather than crashing the caller.
+      Confirmed live: recording a lead with no FCM credentials
+      configured still returns 201, with a `failed_count = 1` row to
+      show for it. Nothing else needs to change once real credentials
+      exist — nothing to migrate, no code path split on "is FCM
+      configured yet."
+
+      **Also not built in this task, and blocked on the same missing
+      Firebase project**: the Flutter-side FCM SDK integration — each
+      of the 3 apps requesting push permission, obtaining its own
+      device token, and calling `POST /api/device-tokens` on login/app
+      start (and `DELETE /api/device-tokens` on logout). Needs real
+      `google-services.json`/`GoogleService-Info.plist` from the same
+      project. The backend registration/unregistration endpoints exist
+      and are tested — there is simply no Flutter caller yet.
+      *(Found in task 7.2.)*
+
 ---
 
 ## Open Questions — resolve before the phase that needs them
@@ -4610,3 +4635,549 @@ to use the salesman app.
   now-verified payment genuinely dropped out of the reconciliation
   queue. All seeded rows, including the audit log entries they
   produced, force-deleted afterward, confirmed zero remaining.
+
+## 2026-08-25/26 — Fix: EditCategory's leaked DeleteAction (SPEC §10)
+
+Found while surveying delete conventions for the Banner task below —
+flagged to you directly rather than silently working around it.
+
+`CategoryResource\Pages\EditCategory::getHeaderActions()` registered
+a real `Actions\DeleteAction::make()`, reintroducing exactly the
+hard-delete path SPEC §10 forbids for master data. `CategoryResource`'s
+own table, `SubcategoriesRelationManager`, and `ZoneResource`'s
+equivalents all correctly omit it (confirmed by reading each) — this
+was the one place the rule leaked back in, apparently missed by the
+original task 1.2 decision.
+
+**Why it went undetected**: `CategoryResourceTest`'s existing "no
+delete action" test only exercised `ListCategories` (the table). It
+never tested `EditCategory` at all, so a header action — a
+genuinely separate registration from table row actions — had no
+coverage. `ZoneResourceTest` already had the equivalent Edit-page
+test (`test_the_edit_page_offers_no_delete_either`), which is exactly
+why `EditZone` never had this bug — confirming the fix needed is
+about test coverage, not just the one line of code.
+
+### Fix
+
+- `EditCategory.php`: `getHeaderActions()` now returns `[]`, matching
+  `EditZone.php`.
+- `CategoryResourceTest.php`: new
+  `test_no_delete_action_is_registered_on_the_category_edit_page()`,
+  same shape as `ZoneResourceTest`'s existing one — asserts absence on
+  the Edit page specifically, not just the table.
+- `ZoneResourceTest.php`: left its existing Edit-page test in place;
+  updated its docblock to explain why it's there and what it would
+  have caught.
+
+### Verified
+
+- Full suite: 604 passed (unaffected count — a fix + one new test,
+  net neutral against the last logged total).
+
+## 2026-08-26 — Task 6.4: Banner Management
+
+### Survey
+
+- `banners` (Phase 1) already had `click_count` and a
+  `banners_serving_index` explicitly comment-tagged "resolving which
+  banners to show right now" — unused until this task.
+- **Missed on first pass, found before writing the "add disk column"
+  migration**: `banners.disk` already existed. A shared Phase 1
+  migration (`add_disk_column_to_file_owning_tables.php`) had already
+  added it to `categories`, `subcategories`, `vendors`, **and
+  `banners`** in one batch, its own docblock explicitly anticipating
+  this task ("vendors and banners are written in Phases 3 and 6, by
+  which time the model default applies on create"). My initial survey
+  only grepped migration *filenames* for "banner" and missed this
+  generically-named one. Deleted the redundant migration I'd
+  written before it ran against dev.
+- SPEC.md mentions "banner" exactly once (§5 item 5) — zero mentions
+  in the salesman/vendor/customer flow sections. Confirmed no spec
+  exists anywhere for where/how a banner renders in any app — same
+  shape as the `cms_pages` gap the Phase 0-5 audit found. Flutter
+  display work explicitly out of scope, flagged rather than guessed.
+- Hard-delete judgment: banners are NOT master data in SPEC §10's
+  sense — that rule exists specifically because `subscription_items`
+  references categories/subcategories/zones without a real foreign
+  key, so a hard delete would orphan live subscriptions. Nothing
+  references a banner by id anywhere. CLAUDE.md's `SoftDeletes` list
+  (`users, vendors, subscriptions`) is a closed enumeration banners
+  aren't on either. Real `DeleteAction`, no `SoftDeletes`.
+
+### Backend
+
+- `app/Models/Banner.php` (new) — `TracksFileDisk`
+  (`fileDiskPathColumn() = 'image_path'`), `RecordsAuditLog` (matches
+  every other admin-editable content model), a `scopeServing()`
+  exercising the `banners_serving_index`.
+- `app/Policies/BannerPolicy.php` (new) — the first policy in this
+  codebase to add its own `delete()` beyond `AdminModulePolicy`'s
+  base (master-data policies deliberately have none). 4 new
+  `Permission` cases (`Banners{ViewAny,Create,Update,Delete}`).
+- `app/Filament/Resources/BannerResource.php` (new) + full CRUD pages
+  — the first resource in this app with a real, working
+  `DeleteAction`. **Two real bugs caught by tests, not by
+  inspection**:
+  1. `EditBanner`'s `DeleteAction::make()` needed an explicit
+     `->visible(fn ($record) => Auth::user()?->can('delete', $record))`
+     — Filament's stock `DeleteAction` does **not** auto-authorize
+     against the model policy just by being declared, unlike what I'd
+     assumed from the (buggy) `EditCategory` precedent above. Every
+     other gated action in this codebase (`VendorVerificationResource`,
+     `ReviewResource`, `CommissionPayouts`) already does this
+     explicitly — Banner just needed the same treatment.
+  2. Testing the Edit page against a `Banner::create()` fixture whose
+     `image_path` was a bare string (never actually uploaded) tripped
+     the `FileUpload` field's `required()` validation on every
+     edit/save test — the field re-validates that the file genuinely
+     exists on hydration. Fixed by having the test fixture actually
+     write the fake file to a faked disk, not just set a path string.
+- `app/Http/Controllers/Api/BannerController.php` (new) — `index()`
+  (public, unpaginated, same bounded-master-data exception as
+  categories/zones/plans) and `click()` (atomic `increment()`, never
+  read-modify-write). New `throttle:banner-click` limiter, per-IP
+  like `public-read` since clicks are anonymous.
+- `app/Http/Resources/BannerResource.php` (new, API shape) —
+  deliberately excludes `click_count` from the response.
+
+### Verified
+
+- New `tests/Feature/Admin/BannerResourceTest.php` (9 cases) and
+  `tests/Feature/Api/BannerEndpointTest.php` (9 cases): full CRUD
+  including a genuinely working delete, `disk` stamped on create,
+  `click_count` unreachable through the form, serving query correctly
+  excludes wrong-app/not-started/ended/inactive banners in one test
+  each, position filter optional, response unpaginated, clicks
+  accumulate correctly and 404 on a nonexistent banner, full
+  permission-gate split (including the update-vs-delete distinction
+  the first gating bug above was actually about).
+- Full suite: **623 passed** (up from 604 + 1 from the Category fix
+  above = 605 baseline; +18 Banner tests).
+- Live: temp `php artisan serve`, seeded five banners directly in the
+  dev database (live-now, not-yet-started, already-ended, inactive,
+  wrong-app). Confirmed the serving query returned exactly the
+  live-now one via curl, three clicks brought `click_count` to
+  exactly 3, and a real delete reduced the raw table row count by
+  one (not soft-deleted — `Banner::find()` returned null and
+  `DB::table('banners')->count()` actually dropped). All seeded rows
+  force-deleted afterward, confirmed zero remaining.
+
+## 2026-08-26 — Task 6.6: CMS Pages
+
+### Survey
+
+- `cms_pages` has existed since Phase 1 with exactly the right shape
+  (`slug` unique, `title`, `body` longText, `target_app` nullable,
+  `is_published`/`published_at`, `updated_by`) but no model, resource,
+  or route had ever been built on top of it.
+- Markdown rendering needed **zero new dependencies**:
+  `league/commonmark` is already vendored transitively (via Filament),
+  and `Illuminate\Support\Str::markdown()` wraps it directly.
+- `routes/web.php` had only the default Laravel welcome route — this
+  is the first genuine public Blade-view work in the app; app store
+  submission needs a real URL a reviewer can open in a browser, not a
+  JSON response, so this had to be `routes/web.php`, not `routes/api.php`.
+- Resolved the "do the Flutter apps need in-app Terms/Privacy screens
+  now" question from BUILD_PLAN's own task 8.4 ("Store prep"), which
+  already scopes in-app reachability to Phase 8 — not a fresh gap,
+  unlike the banners/settings display gaps found in the big audit.
+  This task builds what 8.4 will link to.
+
+### Decisions
+
+- **No delete action** — same outcome as Category/Zone, but for a
+  genuinely different reason. SPEC §10's referential-integrity
+  argument doesn't apply (nothing references a `cms_page` by id); the
+  real risk is that `slug` is a fixed URL an app store listing may
+  already reference — deleting `privacy-policy` would 404 a URL
+  Apple/Google's cached listing still points at. `is_published` is
+  the safe takedown path instead.
+
+### Backend
+
+- `app/Models/CmsPage.php` (new) — `RecordsAuditLog`, `scopePublished()`.
+- `app/Policies/CmsPagePolicy.php` (new) — module `pages`, deliberately
+  no `delete()`. 3 new `Permission` cases
+  (`Pages{ViewAny,Create,Update}` — no `PagesDelete`).
+- `app/Filament/Resources/CmsPageResource.php` (new) + CRUD pages —
+  `MarkdownEditor` for `body`, no `DeleteAction` anywhere (table or
+  Edit header, the two-place check the Category bug taught us to
+  make). `CreateCmsPage`/`EditCmsPage` stamp `updated_by` from the
+  acting admin and set `published_at` the first time a page is
+  published, without moving it on subsequent edits.
+- `database/seeders/CmsPageSeeder.php` (new) — the 5 SPEC-listed
+  slugs (`terms`, `privacy-policy`, `refund-policy`, `faq`, `about`)
+  seeded unpublished, idempotent via slug, added to `DatabaseSeeder`.
+- `app/Http/Controllers/PageController.php` (new, NOT under `Api`) —
+  `index()`/`show($slug)`, both scoped to `CmsPage::published()`;
+  unpublished or nonexistent slugs 404 via `firstOrFail()`.
+- `resources/views/pages/{show,index}.blade.php` (new) — plain
+  semantic HTML using the theme's dark tokens, no build step.
+- `routes/web.php` — `GET /pages` and `GET /pages/{slug}`, registered
+  before the wildcard route so `index` is never matched as a slug.
+
+### Verified
+
+- New `tests/Feature/Admin/CmsPageResourceTest.php` (10 cases) and
+  `tests/Feature/Web/CmsPageEndpointTest.php` (5 cases, a new test
+  namespace — first public web-page tests in the suite): CRUD,
+  `updated_by`/`published_at` stamping, no-delete-action on both the
+  table and the Edit page header, permission gate, markdown-to-HTML
+  rendering, unpublished/nonexistent slugs 404, index lists only
+  published pages, raw HTML in `body` is escaped not executed.
+  Extended `SeederTest` with the expected 5-slug assertion.
+- Full suite: **638 passed** (up from 623 + 15 new). One run hit an
+  unrelated `salesmen_phone_unique` collision from a hardcoded phone
+  literal shared across several pre-existing test files; a clean
+  rerun passed all 638, confirming it was a pre-existing
+  order-dependent flake, not caused by this task (nothing here
+  touches Salesman).
+- Live: temp `php artisan serve` against the real dev database, ran
+  `CmsPageSeeder` (5 rows), confirmed `/pages/privacy-policy` 404s
+  while unpublished, published one via tinker and confirmed
+  `/pages/privacy-policy` rendered real HTML with markdown converted
+  (`**your**` → `<strong>your</strong>`) and appeared in `/pages`,
+  confirmed a real `AuditLog` row was written by the plain
+  `->update()` call, then reverted the page to its seeded unpublished
+  placeholder state. No force-delete cleanup needed — the 5 seeded
+  slugs are meant to persist.
+
+## 2026-08-26 — Task 6.7: Settings admin page
+
+### Survey
+
+- `settings` has existed since Phase 1, `Setting::get()` since task
+  3.4, but nothing wrote to it except the seeder — this task is the
+  missing write side for the 5 keys SPEC §5.17 names.
+- **Consumed today**: `free_trial_max_days` and
+  `free_grants_per_salesman_month`, both read by
+  `FreeTrialValidator` (task 3.4/3.5); `free_trial_max_days` is also
+  echoed through the public `GET /api/settings`.
+- `grace_period_days`: unconsumed as expected, awaiting Phase 7's
+  expiry job — confirmed via grep, only in seeder/migration.
+- **`maintenance_mode`/`force_update_version`: confirmed genuinely
+  unenforced anywhere**, not just unwired to Flutter — grepped the
+  entire repo including `mobile/`: no middleware gate, no Flutter
+  reference at all. `SettingController`'s and `SettingSeeder`'s own
+  docblocks already said as much. This task makes them
+  admin-editable, not functional — flagged in the form's own helper
+  text (not just code comments), same treatment as the banners-
+  display and cms_pages gaps.
+
+### Backend
+
+- `app/Filament/Pages/SettingsPage.php` (new) — a single custom
+  Filament Page with a form, not a Resource: fixed keys, not a CRUD
+  collection. The first form-only custom Page in this app
+  (`Filament\Forms\Contracts\HasForms` +
+  `Filament\Forms\Concerns\InteractsWithForms`) — `LeadsAnalytics`/
+  `CommissionPayouts` are custom Pages too but both use `HasTable`
+  instead, since this page has no table at all.
+- `mount()` loads current values via `Setting::get()`;
+  `save()` writes each key back through a real per-row
+  `Setting::update()` call (never a query-builder mass update), so
+  `RecordsAuditLog`'s hook actually fires, stringifying per the
+  setting's declared `type` so `Setting::get()`'s existing cast logic
+  reads it back correctly.
+- **`Setting` model gets `RecordsAuditLog`** — it didn't have it
+  before. Every other admin-editable model in this codebase does, and
+  SPEC §5.14 calls out audit logging as "especially important since
+  salesmen can grant free subscriptions" — exactly what
+  `free_trial_max_days`/`free_grants_per_salesman_month` are.
+- Two form `Section`s matching the seeder's own `group` values
+  ("Subscriptions", "App"); the App section's two fields carry
+  explicit helper text stating they aren't enforced yet.
+  `force_update_version` validates against an `x.y.z` regex.
+  Respects `is_editable` defensively on save (skips a key if it's
+  ever flipped false, even though all 5 are `true` today).
+- `app/Policies/SettingPolicy.php` (new) — module `settings`, no
+  `create()`/`delete()`: the key set is fixed, nothing to add or
+  remove through the panel. New `Permission::SettingsViewAny`/
+  `SettingsUpdate`. `PolicyCoverageTest::additionalPolicySources()`
+  extended with `Setting::class` — same Page-gated-permission reason
+  as `Lead::class`/`Commission::class`.
+
+### Verified
+
+- New `tests/Feature/Admin/SettingsPageTest.php` (8 cases): renders
+  with seeded values pre-filled, saving round-trips all 5 keys
+  through their correct types, malformed `force_update_version`
+  rejected, a real `AuditLog` entry written for a changed key and
+  none written when nothing changed, full permission-gate split. The
+  view-only-cannot-save case needed a different assertion shape than
+  Banner/Commission's `assertActionHidden` precedent — Livewire
+  absorbs the `abort_unless(403)` into its own response rather than
+  letting it propagate as a catchable exception to the test, so the
+  test asserts the value never actually moved instead of asserting an
+  exception was thrown.
+- `PolicyCoverageTest`'s three existing tests stay green.
+- Full suite: **646 passed** (up from 638).
+- Live: temp `php artisan serve`, confirmed `/admin/settings-page`
+  redirects a guest to login (route genuinely registered and gated).
+  Via tinker (matching the Leads/Commission live-check pattern for
+  gated admin pages — exercise the same `update()` call the page
+  itself makes, not a scripted Livewire/CSRF walkthrough): updated
+  `free_trial_max_days` and `maintenance_mode` on real seeded rows,
+  confirmed `Setting::get()` reflected both new values and a real
+  `AuditLog` row existed with correct `user_id` attribution and
+  `old_values`/`new_values`, then reverted both to their seeded
+  defaults. Also found and killed a stray `artisan serve --port=8000`
+  pair that had respawned since the last cleanup — confirmed zero
+  `php.exe` processes remained afterward.
+
+## 2026-08-26 — Task 7.1: Daily expiry job
+
+### Survey
+
+- **Enum values confirmed, no migration needed.** `subscriptions.status`
+  already `active|grace|expired|cancelled|superseded` (the `superseded`
+  case widened in a prior task via the raw `ALTER TABLE ... MODIFY`
+  pattern); `vendors.status` already
+  `draft|pending_payment|pending_verification|active|grace|expired|rejected`.
+- **Real bug caught by the survey itself, before any code was
+  written**: `VendorSearchService`'s query hardcoded
+  `subscriptions.status = 'active' AND end_date >= now()`. Once this
+  job existed and correctly flipped a subscription to `grace`, that
+  literal predicate — plus `vendors.status = 'active'` — would exclude
+  every grace vendor from search immediately, contradicting SPEC
+  section 7's "Grace = still visible, still has a chance to renew"
+  and BUILD_PLAN 7.1/8.2's own wording (only *Expired* should drop a
+  vendor from search). The fix had to ship with the job itself, not
+  after.
+- **A second, less obvious consequence of the same root cause**:
+  `Vendor::currentActiveSubscription()` (backing the vendor's own
+  dashboard, the public detail page, and portfolio/add-items quota
+  checks) had the identical flat bound. Fixing only the search query
+  would have left a grace vendor appearing in search results but
+  404ing the moment a customer tapped into their detail page.
+- **A third consumer found mid-implementation, not in the original
+  survey**: `Vendor::scopeActive()` (`status = 'active'`) gates
+  `VendorDetailController::show()`'s *first* lookup (`Vendor::active()
+  ->find($vendorId)`, before `currentActiveSubscription()` is ever
+  reached) and `FavoriteController::index()`'s favorites list. Fixing
+  only `currentActiveSubscription()` would have left both of these
+  404ing/silently-dropping a grace vendor regardless of the other
+  fixes. Widened to `whereIn('status', ['active', 'grace'])` too.
+- **A fourth, `GET /api/vendors/me`'s `has_active_subscription`
+  flag** (`VendorResource`) had its own independent ad-hoc query with
+  the same flat bound — a vendor entering grace would have been
+  bounced back to the "select a plan" screen on next login instead of
+  landing on their dashboard to renew. Replaced with a call to the
+  now-fixed `currentActiveSubscription()` instead of a fourth copy of
+  the same logic.
+- **A real bug found while tracing the cascade itself**:
+  `VendorVerificationService::reject()` only ever sets
+  `vendor.status = 'rejected'` — it never touches the vendor's
+  subscription row, which was already created `active` by
+  `SubscriptionService::subscribe()` *before* admin review (a
+  self-registered vendor subscribes first, then gets approved or
+  rejected). Without a guard, the expiry job would have silently
+  resurrected a rejected vendor from `rejected` back to `grace` once
+  their irrelevant, already-rejected subscription's `end_date` lapsed.
+- **Renewal gap confirmed, flagged rather than built** (your call):
+  `ChangeSubscriptionPlanRequest::validateSubscriptionIsActive()`
+  hard-rejects anything but `status === 'active'` — *"Only an active
+  subscription can change plans."* No other endpoint anywhere takes a
+  `grace`/`expired` subscription back to `active`. SPEC section 7 says
+  *"renewal restores to Active"* but never describes the mechanism,
+  and it's absent from every Phase 4 upgrade/downgrade/add-on task.
+  **Open gap for a future task.**
+- **A separate, pre-existing, NOT fixed here**:
+  `User::hasSalesmanAssignedActiveSubscription()` (gates whether a
+  salesman-added vendor can skip email verification) checks
+  `end_date >= now()` with no `status` check at all — already broken
+  today independent of this job, for any salesman-added vendor whose
+  subscription date has simply passed. This job doesn't make it worse
+  (it doesn't touch email-verification logic), but it's a related,
+  real, still-open issue worth a dedicated look.
+- Notifications (expiry reminders T-15/T-7/T-1) confirmed out of
+  scope — BUILD_PLAN 7.2, a separate later task.
+  `SalesmanController::vendors()` confirmed to need no change — its
+  own docblock already says "not filtered to active-only."
+
+### Backend
+
+- `app/Console/Commands/ProcessSubscriptionExpiry.php` (new — the
+  first Artisan command/scheduled job in this app):
+  `subscriptions:process-expiry`, two passes (Active→Grace,
+  Grace→Expired), each scoped with `whereHas('vendor', fn ($q) =>
+  $q->where('status', $fromStatus))` specifically to guard against the
+  rejected-vendor bug above, `chunkById()` for scale, each row updated
+  via a real Eloquent `update()` per model (never a mass query-builder
+  update) so `RecordsAuditLog` — already on both `Subscription` and
+  `Vendor` — fires normally.
+- `routes/console.php` —
+  `Schedule::command('subscriptions:process-expiry')->daily()`,
+  Laravel 12's routes-based scheduling (no `app/Console/Kernel.php`
+  in this version).
+- `app/Services/VendorSearchService.php` — the vendor/subscription
+  status and date bounds widened to the grace-aware conditional
+  described above, reading `grace_period_days` via the existing
+  `Setting::get()` helper (task 3.4 pattern) for the first time
+  anywhere in the app.
+- `app/Models/Vendor.php` — `currentActiveSubscription()` given the
+  identical grace-aware bound; `scopeActive()` widened to
+  `whereIn('status', ['active', 'grace'])`.
+- `app/Http/Resources/VendorResource.php` — `has_active_subscription`
+  now delegates to `currentActiveSubscription()` instead of its own
+  ad-hoc query.
+
+### Verified
+
+- New `tests/Feature/Console/ProcessSubscriptionExpiryTest.php` (12
+  cases, a new test namespace — first Artisan-command tests in the
+  suite): both transition boundaries exactly (end_date = today stays
+  active; one day past moves), the default 7-day grace period and a
+  custom seeded value both respected, `cancelled`/`superseded`
+  subscriptions never touched, **the rejected-vendor regression case
+  confirmed** (a real test, not hypothetical), `is_suspended` left
+  untouched by either transition, real `AuditLog` rows for both the
+  subscription and the vendor, running twice in a row transitions
+  exactly once.
+- Extended `VendorSearchEndpointTest.php` (+3), `VendorDetailEndpointTest.php`
+  (+2), `VendorMeEndpointTest.php` (+2): grace-within-window
+  visible/reachable/dashboard-landing in every case, past-the-window
+  and expired excluded in every case.
+- Full suite: **665 passed** (up from 646).
+- Live: temp `php artisan serve` against the real dev database,
+  seeded 4 real scenarios (active past end_date, grace within window,
+  grace past window, rejected vendor with a dangling active
+  subscription) with full subcategory/zone coverage. Ran
+  `php artisan subscriptions:process-expiry` directly — reported
+  exactly "Active -> Grace: 1. Grace -> Expired: 1." Confirmed via
+  tinker: the active vendor moved to grace, the already-in-window
+  grace vendor stayed, the past-window grace vendor moved to expired,
+  and **the rejected vendor's status never moved** — with real
+  `AuditLog` rows for both genuine transitions. Confirmed through the
+  actual running API, not just the database: `GET /api/vendors/search`
+  returned both grace-window vendors, `GET /api/vendors/{id}/detail`
+  returned 200 for the grace-window vendor and 404 for both the
+  expired and rejected ones. All seeded rows and their audit log
+  entries force-deleted afterward, confirmed zero remaining.
+- Killed a stray `artisan serve --host=0.0.0.0 --port=8000` pair
+  found running again — this is the third occurrence of this exact
+  process across recent tasks. Worth a look at what keeps starting it
+  outside these sessions (a VS Code task, another terminal, a watcher)
+  rather than continuing to clean it up silently each time.
+
+## 2026-08-27 — Task 7.2: FCM push notifications
+
+### Survey
+
+- `device_tokens` confirmed genuinely missing — already named in this
+  checklist as a known gap. Genuinely new: table, model, registration
+  endpoint.
+- `PushNotificationService::notifyVendorApproved/notifyVendorRejected`
+  (stubs since task 4.3) and `notifyReviewRequested` (stub since task
+  4.8) confirmed still no-ops with real call sites already wired —
+  this task gave them real bodies, the call sites didn't move.
+- "Lead received" confirmed genuinely missing anywhere — new call
+  site added in `LeadController::store()`.
+- `User` already had `Notifiable` mixed in but **zero** real usage
+  anywhere (`->notify(`/`Notification::` grepped clean across app and
+  tests) — confirmed this is a green field, and that Laravel's own
+  Notification system (not a bespoke service) is what BUILD_PLAN 7.2
+  itself names ("Add Laravel Notifications for: ...").
+- `notifications` table's existing campaign-log design confirmed to
+  still hold — a single-recipient automated send is a campaign of one
+  (`audience` holds `{"user_id": N}` instead of a broad filter). Its
+  own docblock already named all 4 automated triggers as belonging
+  here, so no schema change was needed.
+- Expiry-reminder idempotency deliberately does NOT live in that
+  table — matches the `leads.review_requested_at` idiom (task 4.8)
+  instead: three nullable `reminder_sent_t{15,7,1}_at` columns
+  directly on `subscriptions`, each set once.
+
+### Backend
+
+- `device_tokens` (new table + `DeviceToken` model, `User::deviceTokens()`)
+  — `token` globally unique (a token identifies a physical install,
+  not a permanent owner; re-registering under a different user
+  reassigns it, tested explicitly).
+- `POST`/`DELETE /api/device-tokens` (`DeviceTokenController`) — the
+  unregister endpoint was your explicit addition beyond what was
+  literally asked, so a logged-out device stops receiving push rather
+  than relying on FCM to notice a stale token.
+- `App\Services\Fcm\ServiceAccountJwt` — hand-rolled RS256 signing via
+  `openssl_sign()` (your call over adding `firebase/php-jwt`), pure
+  and deterministic, unit-tested against a static fixture keypair
+  (this dev machine's `openssl_pkey_new()` can't find a valid
+  `openssl.cnf` — confirmed via `openssl_error_string()` — so the
+  fixture is generated via the `openssl` CLI instead of at PHP
+  runtime; signing/verifying against an existing PEM, what production
+  actually does, is unaffected by that gap).
+- `App\Services\Fcm\FcmClient` — both HTTP calls (OAuth2 token
+  exchange, `messages:send`) go through Laravel's `Http` facade, so
+  `Http::fake()` covers the whole path with zero real credentials.
+  Access token cached 55 min. Fails loudly (throws) on blank
+  `FCM_*` config rather than silently no-oping.
+- `App\Notifications\Channels\FcmChannel` (new) — the one place that
+  talks to FCM. Sends to every one of a notifiable's device tokens,
+  **never lets a send failure propagate** (a bad token or FCM outage
+  must not break `LeadController::store()`), writes exactly one
+  `App\Models\Notification` (new model for the existing table) row
+  per notification fired. Naming collision with
+  `Illuminate\Notifications\Notification` handled via import alias,
+  same treatment `CategoryResource`/`BannerResource` established.
+- 5 notification classes (`App\Notifications\`):
+  `VendorApprovedNotification`, `VendorRejectedNotification`,
+  `ReviewRequestedNotification` (sent to the customer, not the
+  vendor — already documented), `LeadReceivedNotification` (new,
+  sent to the vendor), `SubscriptionExpiringNotification`
+  (parameterized by threshold).
+- `PushNotificationService`'s existing methods became one-liners
+  (`$vendor->user->notify(new X(...))`) — the seam itself and every
+  call site are unchanged; `notifyLeadReceived()`/
+  `notifySubscriptionExpiring()` are new methods on the same service.
+- `app/Console/Commands/SendSubscriptionExpiryReminders.php` (new,
+  distinct from `subscriptions:process-expiry`) — three passes
+  (T-15/T-7/T-1), each gated on `status = 'active'` (Grace has its
+  own, different messaging, out of scope) and its own
+  `reminder_sent_tN_at IS NULL`. Scheduled `->daily()` in
+  `routes/console.php` alongside the existing expiry job.
+- `config/services.php`'s new `fcm` block + `FCM_PROJECT_ID`/
+  `FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY_BASE64` in `.env`/`.env.example`
+  (blank — see the Before Launch Checklist), matching the discrete-
+  env-var pattern `AWS_*` already uses for R2 rather than a single
+  JSON blob.
+
+### Verified
+
+- New: `tests/Unit/Fcm/ServiceAccountJwtTest.php` (4 cases, pure
+  crypto, no HTTP/app boot), `tests/Feature/Fcm/FcmClientTest.php` (6
+  cases — exact FCM payload asserted, token-exchange JWT shape
+  asserted, access-token caching confirmed via request count, a
+  failed FCM response returns `false` not an exception, a blank
+  config throws before any HTTP call), `tests/Feature/Api/DeviceTokenEndpointTest.php`
+  (8 cases), `tests/Feature/Notifications/PushNotificationTriggersTest.php`
+  (6 cases — exercises the REAL call sites, not `PushNotificationService`
+  directly: `VendorVerificationService::approve/reject`,
+  `POST /api/vendors/me/leads/{lead}/request-review`,
+  `POST /api/leads`; confirms a device-token-less vendor still logs
+  `sent_count = 0` cleanly, confirms a failed push never turns a
+  successful lead-record response into a failure),
+  `tests/Feature/Console/SendSubscriptionExpiryRemindersTest.php` (6
+  cases — each threshold boundary, the intentional same-run catch-up
+  behavior for a subscription never seen before, running twice
+  doesn't resend, a `grace`-status subscription is skipped).
+- **Real bug caught while writing tests, not by inspection**:
+  `Http::fake()` MERGES repeated calls rather than replacing them —
+  the first registered stub wins on a URL match. A test-local
+  override of the shared `fcm.googleapis.com` success stub from
+  `setUp()` silently never took effect. Fixed by keeping only the
+  (universally-shared, never overridden) token-exchange fake in
+  `setUp()` and declaring the FCM-send response explicitly per test.
+- Full suite: **695 passed** (up from 665).
+- Live: temp `php artisan serve` against the real dev database (no
+  real FCM credentials — same constraint as R2). Registered a device
+  token via the real API, recorded a real lead via the real API —
+  confirmed the request still succeeded (201) with a real
+  `notifications` row showing `sent_count = 0, failed_count = 1`,
+  proving the fail-safe design live, not just in mocked tests.
+  Unregistered the token, confirmed removal. Ran
+  `subscriptions:send-expiry-reminders` against a seeded 15-day-out
+  subscription, confirmed exactly `reminder_sent_t15_at` stamped
+  (not t7/t1), confirmed a second run sent nothing further. All
+  seeded rows force-deleted afterward, confirmed zero remaining.
+  Temp server killed, confirmed zero `php.exe` processes remained.

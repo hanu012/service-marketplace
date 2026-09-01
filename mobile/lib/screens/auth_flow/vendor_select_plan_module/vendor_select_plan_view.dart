@@ -17,6 +17,22 @@ class VendorSelectPlanView extends StatelessWidget {
       builder: (controller) {
         return Scaffold(
           backgroundColor: ColorRes.backgroundColor,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            automaticallyImplyLeading: false,
+            toolbarHeight: 44.getSize,
+            actions: [
+              TextButton(
+                onPressed: controller.logoutAPI,
+                child: BaseTextDMSans(
+                  text: StringRes.signOut,
+                  fontSize: 14,
+                  color: ColorRes.primaryColor,
+                ).tr(),
+              ),
+            ],
+          ),
           bottomNavigationBar: getBottomButton(controller, context),
           body: Utils.authLayout(
             onSkipTap: null,
@@ -24,7 +40,7 @@ class VendorSelectPlanView extends StatelessWidget {
             desc: StringRes.selectPlanDesc,
             isLogin: false,
             isForCustomer: false,
-            skipTap: true,
+            skipTap: false,
             contentWidget: mainBody(controller),
           ),
         );

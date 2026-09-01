@@ -20,7 +20,9 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
 
@@ -273,11 +275,39 @@ class UserResource extends Resource
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make(),
+
+                // Manual stand-in for the emailed verification link — used
+                // while bypass_email_verification is on (Settings page) or
+                // any time an admin needs to unblock a stuck self-signup.
+                \Filament\Tables\Actions\Action::make('verifyEmail')
+                    ->label('Verify email')
+                    ->icon('heroicon-o-check-badge')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (User $record): bool => ! $record->hasVerifiedEmail())
+                    ->action(function (User $record): void {
+                        if ($record->markEmailAsVerified()) {
+                            event(new Verified($record));
+                        }
+                    }),
             ])
             ->bulkActions([
                 // No bulk delete: each deletion rewrites an email address and
                 // revokes tokens, which is not something to do to a checkbox
                 // selection by accident.
+                \Filament\Tables\Actions\BulkAction::make('verifyEmail')
+                    ->label('Verify email')
+                    ->icon('heroicon-o-check-badge')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->deselectRecordsAfterCompletion()
+                    ->action(function (Collection $records): void {
+                        foreach ($records as $record) {
+                            if ($record->markEmailAsVerified()) {
+                                event(new Verified($record));
+                            }
+                        }
+                    }),
             ]);
     }
 

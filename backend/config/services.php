@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    /*
+     * FCM HTTP v1 (BUILD_PLAN 7.2). private_key_base64 is the service
+     * account's PEM private key, base64-encoded — a raw multi-line PEM
+     * doesn't survive a single .env line cleanly. See the Before
+     * Launch Checklist: no real Firebase project exists in this dev
+     * environment, so these are blank until one is created.
+     */
+    'fcm' => [
+        'project_id' => env('FCM_PROJECT_ID'),
+        'client_email' => env('FCM_CLIENT_EMAIL'),
+        'private_key_base64' => env('FCM_PRIVATE_KEY_BASE64'),
+    ],
+
 ];

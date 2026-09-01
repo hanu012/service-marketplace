@@ -94,9 +94,12 @@ void main() {
 
   group('Theme', () {
     test('palette matches the values recorded in CLAUDE.md', () {
-      expect(ColorRes.primaryColor, const Color(0xFF2DD4BF)); // teal-400
-      expect(ColorRes.surfaceColor, const Color(0xFF0F172A)); // slate-900
-      expect(ColorRes.backgroundColor, const Color(0xFF020617)); // slate-950
+      // The Flutter apps use the violet scheme from the auth reference
+      // design; the Filament admin panel is still teal. CLAUDE.md's Theme
+      // section records both and calls the split out explicitly.
+      expect(ColorRes.primaryColor, const Color(0xFF8B5CF6)); // violet-500
+      expect(ColorRes.surfaceColor, const Color(0xFF16102E));
+      expect(ColorRes.backgroundColor, const Color(0xFF0B0716));
     });
 
     test('the page background is not pure black', () {

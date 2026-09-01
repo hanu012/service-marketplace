@@ -39,6 +39,9 @@ class Subscription extends Model
         'free_trial_days',
         'previous_subscription_id',
         'idempotency_key',
+        'reminder_sent_t15_at',
+        'reminder_sent_t7_at',
+        'reminder_sent_t1_at',
     ];
 
     protected function casts(): array
@@ -49,6 +52,9 @@ class Subscription extends Model
             'price_paise' => 'integer',
             'duration_days' => 'integer',
             'free_trial_days' => 'integer',
+            'reminder_sent_t15_at' => 'datetime',
+            'reminder_sent_t7_at' => 'datetime',
+            'reminder_sent_t1_at' => 'datetime',
         ];
     }
 

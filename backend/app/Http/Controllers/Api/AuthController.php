@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Customer;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Vendor;
 use Illuminate\Http\JsonResponse;
@@ -64,7 +65,15 @@ class AuthController extends Controller
             return $user;
         });
 
-        $user->sendEmailVerificationNotification();
+        // Local stopgap until real SMTP is wired up: when the
+        // bypass_email_verification setting is on, no email goes out. The
+        // account is still created unverified and still gated at login —
+        // an admin verifies it by hand from the Users list.
+        $bypassVerification = Setting::get('bypass_email_verification', false);
+
+        if (! $bypassVerification) {
+            $user->sendEmailVerificationNotification();
+        }
 
         // A vendor who must verify before logging in is not handed a token
         // here — issuing one would let them straight past the very gate
@@ -73,8 +82,10 @@ class AuthController extends Controller
             return ApiResponse::success([
                 'user' => new UserResource($user),
                 'token' => null,
-                'message' => 'Please verify your email address before signing in. '
-                    .'A verification link has been sent to you.',
+                'message' => $bypassVerification
+                    ? 'Your account has been created. An administrator will verify it before you can sign in.'
+                    : 'Please verify your email address before signing in. '
+                        .'A verification link has been sent to you.',
             ], 201);
         }
 

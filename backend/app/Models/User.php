@@ -11,6 +11,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -54,6 +55,16 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     public function customer(): HasOne
     {
         return $this->hasOne(Customer::class);
+    }
+
+    /**
+     * FCM registration tokens (BUILD_PLAN 7.2) — every device this
+     * user is currently signed in on. `FcmChannel` sends to all of
+     * them; there is no "primary device" concept.
+     */
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
     }
 
     /**

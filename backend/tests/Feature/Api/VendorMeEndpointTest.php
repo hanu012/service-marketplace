@@ -127,6 +127,70 @@ class VendorMeEndpointTest extends TestCase
             ->assertJsonPath('data.vendor.has_active_subscription', false);
     }
 
+    public function test_has_active_subscription_is_true_within_the_grace_window(): void
+    {
+        // task 7.1: a vendor who just entered grace must still land on
+        // their dashboard, not get bounced back to plan selection.
+        $user = $this->vendorUser();
+        $vendor = Vendor::create([
+            'user_id' => $user->id,
+            'business_name' => 'Cool Air Services',
+            'owner_name' => 'Asha Patel',
+            'phone' => '9812345678',
+            'status' => 'grace',
+        ]);
+
+        $plan = Plan::factory()->create();
+
+        \App\Models\Subscription::create([
+            'vendor_id' => $vendor->id,
+            'plan_id' => $plan->id,
+            'source' => 'self',
+            'status' => 'grace',
+            'start_date' => now()->subDays(370),
+            'end_date' => now()->subDays(3),
+            'price_paise' => 99_900,
+            'duration_days' => 365,
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/vendors/me')
+            ->assertOk()
+            ->assertJsonPath('data.vendor.has_active_subscription', true);
+    }
+
+    public function test_has_active_subscription_is_false_past_the_grace_window(): void
+    {
+        $user = $this->vendorUser();
+        $vendor = Vendor::create([
+            'user_id' => $user->id,
+            'business_name' => 'Cool Air Services',
+            'owner_name' => 'Asha Patel',
+            'phone' => '9812345678',
+            'status' => 'grace',
+        ]);
+
+        $plan = Plan::factory()->create();
+
+        \App\Models\Subscription::create([
+            'vendor_id' => $vendor->id,
+            'plan_id' => $plan->id,
+            'source' => 'self',
+            'status' => 'grace',
+            'start_date' => now()->subDays(400),
+            'end_date' => now()->subDays(10),
+            'price_paise' => 99_900,
+            'duration_days' => 365,
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/vendors/me')
+            ->assertOk()
+            ->assertJsonPath('data.vendor.has_active_subscription', false);
+    }
+
     public function test_only_returns_the_callers_own_vendor_not_someone_elses(): void
     {
         $other = $this->vendorUser();

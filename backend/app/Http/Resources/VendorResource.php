@@ -39,11 +39,14 @@ class VendorResource extends JsonResource
             'has_kyc' => $this->shop_photo_path !== null && $this->id_proof_path !== null,
 
             // SPEC section 3.2: what GET /api/vendors/me's caller (task 4.2)
-            // branches on — skip plan selection when this is true.
-            'has_active_subscription' => $this->subscriptions()
-                ->where('status', 'active')
-                ->where('end_date', '>=', now())
-                ->exists(),
+            // branches on — skip plan selection when this is true. Reuses
+            // Vendor::currentActiveSubscription() (widened in task 7.1 to
+            // include grace) rather than a separate query, so a vendor
+            // whose subscription just entered its grace window still lands
+            // on their dashboard to renew, not back on a fresh plan-
+            // selection screen that would push them toward accidentally
+            // resubscribing from scratch instead.
+            'has_active_subscription' => $this->currentActiveSubscription() !== null,
 
             'created_at' => $this->created_at?->toIso8601String(),
         ];

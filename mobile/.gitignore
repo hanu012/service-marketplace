@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Native platform build output (android/build, android/app/build, etc.) —
+# the top-level /build/ rule above doesn't reach these nested ones.
+**/build/
+
 # Symbolication related
 app.*.symbols
 

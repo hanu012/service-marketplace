@@ -3,34 +3,33 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\Subscription;
 use App\Models\Vendor;
+use App\Notifications\LeadReceivedNotification;
+use App\Notifications\ReviewRequestedNotification;
+use App\Notifications\SubscriptionExpiringNotification;
+use App\Notifications\VendorApprovedNotification;
+use App\Notifications\VendorRejectedNotification;
 
 /**
- * Push notification seam for vendor verification outcomes (SPEC section 5.8)
- * and, since task 4.8, a vendor's "Request a review" action (SPEC section 3
- * item 8).
+ * Push notification seam for vendor verification outcomes (SPEC section
+ * 5.8), a vendor's "Request a review" action (SPEC section 3 item 8,
+ * task 4.8), lead-received, and expiry reminders (SPEC section 5.12).
  *
- * No FCM calls here — CLAUDE.md: FCM isn't wired up until Phase 7. Every
- * method is a documented no-op for now; the `notifications` table
- * (`database/migrations/..._create_notifications_table.php`) already exists
- * and its own docblock names `verification_approved` as a worked example
- * trigger type — `review_request` is SPEC section 12's other named
- * automated trigger. When Phase 7 lands, each method gains a body that
- * writes a row there (`type` = 'verification_approved'/
- * 'verification_rejected'/'review_request', `target_app` =
- * 'vendor'/'customer') and hands off to the dispatcher — the call sites
- * don't need to change.
+ * Each method sends a real Laravel Notification through FcmChannel
+ * (BUILD_PLAN 7.2) — the seam itself, and every call site, predate
+ * this and are unchanged; only the bodies went from no-op to real.
  */
 class PushNotificationService
 {
     public function notifyVendorApproved(Vendor $vendor): void
     {
-        // Intentional no-op until Phase 7.
+        $vendor->user->notify(new VendorApprovedNotification($vendor));
     }
 
     public function notifyVendorRejected(Vendor $vendor, string $reason): void
     {
-        // Intentional no-op until Phase 7.
+        $vendor->user->notify(new VendorRejectedNotification($vendor, $reason));
     }
 
     /**
@@ -39,6 +38,26 @@ class PushNotificationService
      */
     public function notifyReviewRequested(Vendor $vendor, Lead $lead): void
     {
-        // Intentional no-op until Phase 7.
+        $lead->customer->user->notify(new ReviewRequestedNotification($vendor, $lead));
+    }
+
+    /**
+     * SPEC section 5.12's "lead received" trigger — sent to the
+     * VENDOR the instant LeadController::store() records a lead.
+     */
+    public function notifyLeadReceived(Lead $lead): void
+    {
+        $lead->vendor->user->notify(new LeadReceivedNotification($lead));
+    }
+
+    /**
+     * SPEC section 5.12's expiry reminders (T-15/T-7/T-1) — sent to
+     * the VENDOR by SendSubscriptionExpiryReminders, once per
+     * threshold per subscription (idempotency tracked on the
+     * subscription row itself, not here).
+     */
+    public function notifySubscriptionExpiring(Subscription $subscription, int $daysRemaining): void
+    {
+        $subscription->vendor->user->notify(new SubscriptionExpiringNotification($subscription, $daysRemaining));
     }
 }

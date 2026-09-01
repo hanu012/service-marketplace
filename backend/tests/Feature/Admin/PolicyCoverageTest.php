@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Enums\Permission;
 use App\Models\Commission;
 use App\Models\Lead;
+use App\Models\Setting;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -41,7 +42,7 @@ class PolicyCoverageTest extends TestCase
      */
     private function additionalPolicySources(): array
     {
-        return [Lead::class, Commission::class];
+        return [Lead::class, Commission::class, Setting::class];
     }
 
     public function test_every_admin_resource_has_a_policy(): void

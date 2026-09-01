@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ChangePasswordController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DeleteAccountController;
+use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LeadController;
@@ -227,3 +228,11 @@ Route::get('/user', function (Request $request) {
 // exists today.
 Route::delete('/user', DeleteAccountController::class)
     ->middleware(['auth:sanctum', 'role:vendor,salesman,customer']);
+
+// FCM device registration (BUILD_PLAN 7.2) — same role list as
+// account deletion above; admin uses the Filament panel, not one of
+// the 3 Flutter apps, so it has no device to register push against.
+Route::middleware(['auth:sanctum', 'role:vendor,salesman,customer'])->group(function () {
+    Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [DeviceTokenController::class, 'destroy']);
+});

@@ -62,6 +62,27 @@ class ServiceMarketplaceApp extends StatelessWidget {
       theme: _theme,
       darkTheme: _theme,
 
+      // A corner ribbon naming the running flavour — the three apps look
+      // alike on a dev device otherwise. Debug builds only; never shipped.
+      builder: (context, child) {
+        final content = child ?? const SizedBox.shrink();
+
+        if (!kDebugMode) return content;
+
+        return Banner(
+          message: config.flavor.name.toUpperCase(),
+          location: BannerLocation.topStart,
+          color: ColorRes.primaryColor,
+          textStyle: TextStyle(
+            color: ColorRes.backgroundColor,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+          child: content,
+        );
+      },
+
       home: _firstScreen(config),
     );
   }

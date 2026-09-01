@@ -31,6 +31,7 @@ export '../common_model/zone_model.dart';
 export '../network/data_source.dart';
 export '../utils/injector.dart';
 export '../utils/utils.dart';
+export '../widgets/base_auth.dart';
 export '../widgets/base_button.dart';
 export '../widgets/base_text.dart';
 export '../widgets/base_textfield.dart';

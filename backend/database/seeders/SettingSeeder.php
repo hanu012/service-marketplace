@@ -65,6 +65,16 @@ class SettingSeeder extends Seeder
             'label' => 'Maintenance mode',
             'description' => 'Global app-side maintenance toggle. Not yet enforced.',
         ],
+        [
+            'key' => 'bypass_email_verification',
+            'value' => 'false',
+            'type' => 'boolean',
+            'group' => 'dev',
+            'label' => 'Bypass email verification (local only)',
+            'description' => 'When on, self-registration does not send a verification email — '
+                .'the account is still created unverified and an admin verifies it by hand from '
+                .'the Users list. A stopgap until real SMTP is wired up; keep off in production.',
+        ],
     ];
 
     public function run(): void

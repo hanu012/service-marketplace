@@ -31,7 +31,7 @@ class SalesmanCommissionsEndpointTest extends TestCase
         Salesman::create([
             'user_id' => $user->id,
             'employee_code' => $code,
-            'phone' => '99000000'.random_int(10, 99),
+            'phone' => (string) fake()->unique()->numberBetween(9000000000, 9999999999),
         ]);
 
         return $user->fresh();

@@ -1,7 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
-import '../../../constants/constant.dart';
 import 'salesman_login_controller.dart';
 
 /// Salesman sign-in. Login only — no registration link anywhere, because
@@ -11,6 +10,10 @@ import 'salesman_login_controller.dart';
 /// returns a GetBuilder with init + dispose, state read off the builder
 /// argument named `controller` (never `_`, which Dart 3.7+ treats as a
 /// non-binding wildcard).
+///
+/// Chrome comes from [AuthScaffold] — the shared auth design system in
+/// widgets/base_auth.dart — so this screen, both vendor screens and both
+/// customer screens stay visually identical by construction.
 class SalesmanLoginView extends StatelessWidget {
   const SalesmanLoginView({super.key});
 
@@ -20,97 +23,47 @@ class SalesmanLoginView extends StatelessWidget {
       init: SalesmanLoginController(),
       dispose: (_) => Get.delete<SalesmanLoginController>(),
       builder: (controller) {
-        return Scaffold(
-          backgroundColor: ColorRes.backgroundColor,
-          resizeToAvoidBottomInset: true,
-          bottomNavigationBar: getBottomButton(controller, context),
-          body: mainBody(controller),
-        );
-      },
-    );
-  }
-
-  Widget mainBody(SalesmanLoginController controller) {
-    return Utils.authLayout(
-      onSkipTap: null,
-      title: StringRes.salesmanLoginTitle,
-      desc: StringRes.salesmanLoginDesc,
-      isLogin: true,
-      isForCustomer: false,
-      // No back arrow: this is the first screen of the flavour, there is
-      // nothing behind it to return to.
-      skipTap: false,
-      contentWidget: Form(
-        key: controller.formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            BaseTextDMSans(
-              text: StringRes.email,
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
-              color: ColorRes.secondaryColor,
-              textAlign: TextAlign.start,
-            ).tr(),
-            8.heightSpacer,
-            BaseTextField(
+        return AuthScaffold(
+          title: StringRes.salesmanLoginTitle,
+          subtitle: StringRes.salesmanLoginDesc,
+          formKey: controller.formKey,
+          // No back chip: this is the first screen of the flavour, there is
+          // nothing behind it to return to.
+          showBack: false,
+          fields: [
+            AuthTextField(
+              label: StringRes.email,
+              hint: tr(StringRes.enterYourEmail),
               controller: controller.emailController,
-              hintText: tr(StringRes.enterYourEmail),
-              isShowBorder: true,
+              icon: Icons.mail_outline_rounded,
               validateMode: controller.autoValidateMode,
               textInputType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               validator: controller.validateEmail,
             ),
-            20.heightSpacer,
-            BaseTextDMSans(
-              text: StringRes.password,
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
-              color: ColorRes.secondaryColor,
-              textAlign: TextAlign.start,
-            ).tr(),
-            8.heightSpacer,
-            BaseTextField(
+            AuthTextField(
+              label: StringRes.password,
+              hint: tr(StringRes.enterYourPassword),
               controller: controller.passwordController,
-              hintText: tr(StringRes.enterYourPassword),
-              isShowBorder: true,
+              icon: Icons.lock_outline_rounded,
               isSecure: controller.obscurePassword,
               validateMode: controller.autoValidateMode,
               textInputAction: TextInputAction.done,
               validator: controller.validatePassword,
               onFieldSubmitted: (_) => controller.loginAPI(),
-              suffixIcon: IconButton(
+              isLast: true,
+              suffixIcon: AuthVisibilityToggle(
+                isObscured: controller.obscurePassword,
                 onPressed: controller.togglePasswordVisibility,
-                icon: Icon(
-                  controller.obscurePassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                  color: ColorRes.grayColor,
-                  size: 20.getSize,
-                ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget getBottomButton(
-      SalesmanLoginController controller, BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24.getSize,
-        right: 24.getSize,
-        top: 10.getSize,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 10.getSize,
-      ),
-      child: BaseRaisedButton(
-        onPressed: controller.loginAPI,
-        buttonText: StringRes.signIn,
-        buttonColor: ColorRes.primaryColor,
-      ),
+          primaryAction: AuthPrimaryButton(
+            label: StringRes.signIn,
+            onPressed: controller.loginAPI,
+          ),
+        );
+      },
     );
   }
 }

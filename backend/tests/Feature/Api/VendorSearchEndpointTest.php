@@ -156,6 +156,69 @@ class VendorSearchEndpointTest extends TestCase
         ]))->assertOk()->assertJsonCount(0, 'data.vendors');
     }
 
+    // ── Grace window (task 7.1) ─────────────────────────────────────────
+
+    /**
+     * SPEC section 7: Grace is a still-visible renewal window, not an
+     * exit from search — only Expired actually removes a vendor. Both
+     * vendor.status AND subscriptions.status must say 'grace', and
+     * end_date must still be within grace_period_days (default 7,
+     * seeded by SettingSeeder), or the whole point of this test is
+     * moot.
+     */
+    public function test_a_vendor_within_the_grace_window_still_matches(): void
+    {
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+        $vendor = $this->vendorCovering($subcategory, $zone, $plan,
+            vendorAttributes: ['status' => 'grace'],
+            subscriptionAttributes: ['status' => 'grace', 'end_date' => now()->subDays(3)],
+        );
+
+        $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.02,
+            'longitude' => 72.52,
+        ]))->assertOk()
+            ->assertJsonCount(1, 'data.vendors')
+            ->assertJsonPath('data.vendors.0.id', $vendor->id);
+    }
+
+    public function test_a_vendor_past_the_grace_window_is_excluded(): void
+    {
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+        $this->vendorCovering($subcategory, $zone, $plan,
+            vendorAttributes: ['status' => 'grace'],
+            subscriptionAttributes: ['status' => 'grace', 'end_date' => now()->subDays(10)],
+        );
+
+        $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.02,
+            'longitude' => 72.52,
+        ]))->assertOk()->assertJsonCount(0, 'data.vendors');
+    }
+
+    public function test_an_expired_vendor_is_excluded(): void
+    {
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+        $this->vendorCovering($subcategory, $zone, $plan,
+            vendorAttributes: ['status' => 'expired'],
+            subscriptionAttributes: ['status' => 'expired', 'end_date' => now()->subDays(20)],
+        );
+
+        $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.02,
+            'longitude' => 72.52,
+        ]))->assertOk()->assertJsonCount(0, 'data.vendors');
+    }
+
     public function test_a_suspended_vendor_is_excluded(): void
     {
         $subcategory = $this->subcategory();

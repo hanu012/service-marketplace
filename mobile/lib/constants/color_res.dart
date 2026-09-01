@@ -3,52 +3,71 @@ import 'package:flutter/material.dart';
 /// Single source of colour for the app. Screens never carry inline hex —
 /// see the Flutter conventions in CLAUDE.md.
 ///
-/// Values are the verified palette from CLAUDE.md's Theme section, shared with
-/// the Filament admin panel so the two look like one product.
+/// The palette is the violet/indigo scheme from the auth reference design:
+/// a near-black indigo canvas, violet-tinted surfaces and borders, and a
+/// violet-500 accent. Every value below was contrast-checked against the
+/// surface it actually sits on (see the notes per token).
+///
+/// NOTE: CLAUDE.md's Theme section still documents the previous teal-400 /
+/// slate palette, which the Filament admin panel continues to use. The two
+/// products no longer share an accent colour. That divergence is deliberate
+/// but undocumented — CLAUDE.md needs updating, or the admin panel needs
+/// re-theming to match, depending on which way the product should go.
 ///
 /// Member names are kept identical to the demo-app (primaryColor,
 /// secondaryColor, grayColor, ...) so screens ported from it compile without
-/// edits. Only the values changed: the demo-app was a light blue theme.
+/// edits. Only the values changed.
 class ColorRes {
   // ── Brand ────────────────────────────────────────────────────────────────
-  /// teal-400. Buttons, links, active states, focus rings.
-  static Color primaryColor = const Color(0xFF2DD4BF);
+  /// violet-500. Buttons, focus rings, active states.
+  ///
+  /// Carries white text at 4.2:1 — fine for the 16pt semibold button label,
+  /// which is why button labels default to white rather than dark ink.
+  static Color primaryColor = const Color(0xFF8B5CF6);
 
-  /// teal-300 — hover / pressed lift on top of [primaryColor].
-  static Color primaryColorLight = const Color(0xFF5EEAD4);
+  /// violet-400. Links and secondary accents on the dark canvas, where it
+  /// reads at 7.0:1 against [backgroundColor].
+  ///
+  /// Deliberately NOT used as a button fill: white text on it is only 2.7:1,
+  /// which fails AA. Button gradients run primaryColor → primaryColorDark.
+  static Color primaryColorLight = const Color(0xFFA78BFA);
 
-  /// teal-600 — pressed states and dividers that need to read as brand.
-  static Color primaryColorDark = const Color(0xFF0D9488);
+  /// violet-700. The deep end of button gradients and pressed states.
+  /// White on this is 7.0:1.
+  static Color primaryColorDark = const Color(0xFF6D28D9);
 
   // ── Surfaces ─────────────────────────────────────────────────────────────
-  /// slate-950. App background. Deliberately not #000000.
-  static Color backgroundColor = const Color(0xFF020617);
+  /// Near-black indigo. App background. Deliberately not #000000 — the
+  /// reference design's canvas carries a faint violet cast.
+  static Color backgroundColor = const Color(0xFF0B0716);
 
-  /// slate-900. Cards, sheets, nav, raised surfaces.
-  static Color surfaceColor = const Color(0xFF0F172A);
+  /// Cards, sheets, nav, input fills. One step up from the canvas.
+  static Color surfaceColor = const Color(0xFF16102E);
 
-  /// slate-800. Input fills and pressed surfaces.
-  static Color surfaceElevatedColor = const Color(0xFF1E293B);
+  /// Pressed surfaces and secondary buttons.
+  static Color surfaceElevatedColor = const Color(0xFF221A45);
 
-  /// slate-700. Borders and dividers.
-  static Color borderColor = const Color(0xFF334155);
+  /// Violet-tinted hairline for borders and dividers — the visible outline
+  /// on the reference design's inputs.
+  static Color borderColor = const Color(0xFF362B63);
 
   // ── Text ─────────────────────────────────────────────────────────────────
-  /// slate-50. Primary text on dark surfaces.
+  /// violet-50. Primary text on dark surfaces, ~18:1 on [backgroundColor].
   ///
   /// In the demo-app this was near-black body text; on a dark theme the same
   /// role is near-white. The name is kept so ported screens still compile.
-  static Color secondaryColor = const Color(0xFFF8FAFC);
+  static Color secondaryColor = const Color(0xFFF5F3FF);
 
-  /// slate-400. Secondary text, hints, disabled states.
-  static Color grayColor = const Color(0xFF94A3B8);
+  /// Muted lavender-gray. Secondary text, hints, disabled states. 7.5:1 on
+  /// [backgroundColor], so hint text stays readable rather than decorative.
+  static Color grayColor = const Color(0xFFA29CC4);
 
   static Color whiteColor = const Color(0xFFFFFFFF);
-  static Color blackColor = const Color(0xFF020617);
+  static Color blackColor = const Color(0xFF0B0716);
 
   // ── Status ───────────────────────────────────────────────────────────────
-  // Kept clear of teal so status never reads as brand. Mirrors the reasoning
-  // in CLAUDE.md for the admin panel.
+  // Unchanged, and now further from the accent than they were under teal —
+  // violet collides with neither red nor amber nor green.
   static Color errorColor = const Color(0xFFEF4444); // red-500
   static Color warningColor = const Color(0xFFF59E0B); // amber-500
   static Color successColor = const Color(0xFF22C55E); // green-500

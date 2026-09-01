@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RecordsAuditLog;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -12,9 +13,19 @@ use Illuminate\Database\Eloquent\Model;
  * Phase 3's salesman flow reads its business rules from here rather than
  * hardcoding them — see the settings migration for the full documented key
  * list.
+ *
+ * RecordsAuditLog matters more here than on most models: SPEC section
+ * 5.14 calls out audit logging as "especially important since salesmen
+ * can grant free subscriptions," and free_trial_max_days /
+ * free_grants_per_salesman_month are exactly the governance-sensitive
+ * values that note is about. Only fires on a real Eloquent update() per
+ * row — the settings admin page (task 6.7) deliberately never does a
+ * mass query-builder update for this reason.
  */
 class Setting extends Model
 {
+    use RecordsAuditLog;
+
     protected $fillable = [
         'key',
         'value',

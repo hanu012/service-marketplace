@@ -4,6 +4,7 @@ namespace Tests\Feature\Schema;
 
 use App\Enums\UserRole;
 use App\Models\Category;
+use App\Models\CmsPage;
 use App\Models\Plan;
 use App\Models\Subcategory;
 use App\Models\User;
@@ -208,6 +209,13 @@ class SeederTest extends TestCase
         $this->assertTrue($admin->canAccessPanel(filament()->getPanel('admin')));
     }
 
+    public function test_the_expected_cms_page_slugs_are_seeded(): void
+    {
+        $slugs = CmsPage::pluck('slug')->sort()->values()->all();
+
+        $this->assertSame(['about', 'faq', 'privacy-policy', 'refund-policy', 'terms'], $slugs);
+    }
+
     public function test_laravels_stub_test_user_is_not_seeded(): void
     {
         $this->assertDatabaseMissing('users', ['email' => 'test@example.com']);
@@ -220,14 +228,14 @@ class SeederTest extends TestCase
         // duplicate — this seeder is intended to be safe on a live database.
         $before = [
             Category::count(), Subcategory::count(),
-            Zone::count(), Plan::count(), User::count(),
+            Zone::count(), Plan::count(), User::count(), CmsPage::count(),
         ];
 
         $this->seed(DatabaseSeeder::class);
 
         $after = [
             Category::count(), Subcategory::count(),
-            Zone::count(), Plan::count(), User::count(),
+            Zone::count(), Plan::count(), User::count(), CmsPage::count(),
         ];
 
         $this->assertSame($before, $after);

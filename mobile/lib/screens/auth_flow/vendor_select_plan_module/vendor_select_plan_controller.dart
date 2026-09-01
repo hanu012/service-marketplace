@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../vendor_login_module/vendor_login_view.dart';
 import '../vendor_select_services_module/vendor_select_services_view.dart';
 
 /// Vendor self-service, step 1 — plan selection (SPEC section 3.2).
@@ -69,6 +70,27 @@ class VendorSelectPlanController extends GetxController {
   void selectPlan(int planId) {
     selectedPlanId = planId;
     update();
+  }
+
+  /// Onboarding has no dashboard to fall back on and the nav stack was
+  /// cleared getting here, so this screen carries its own sign-out —
+  /// same steps as VendorDashboardController.logoutAPI().
+  Future<void> logoutAPI() async {
+    try {
+      Utils.showCircularProgressLottie(true);
+      await DataSource.instance.logoutAPI();
+      Utils.showCircularProgressLottie(false);
+    } catch (e) {
+      Utils.showCircularProgressLottie(false);
+      if (kDebugMode) {
+        print('Vendor logout error $e');
+      }
+    }
+
+    await Injector.clearUserData();
+
+    Utils.showToast(tr(StringRes.logout));
+    Utils.transitionWithOffAll(const VendorLoginView());
   }
 
   PlanModel? get selectedPlan {
