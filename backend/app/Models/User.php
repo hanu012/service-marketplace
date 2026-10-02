@@ -37,6 +37,8 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
         'role',
         'permissions',
         'must_change_password',
+        'language',
+        'enable_notification',
     ];
 
     /**
@@ -90,6 +92,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
             'role' => UserRole::class,
             'permissions' => 'array',
             'must_change_password' => 'boolean',
+            'enable_notification' => 'boolean',
         ];
     }
 

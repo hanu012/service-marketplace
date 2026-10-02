@@ -14,6 +14,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -142,6 +143,11 @@ class UserResource extends Resource
                         ->required()
                         ->maxLength(255)
                         ->unique(table: 'salesmen', ignoreRecord: true),
+
+                    TextInput::make('region')
+                        ->label('Assigned region')
+                        ->maxLength(255)
+                        ->helperText('Free text, e.g. "Ahmedabad · Gujarat". Shown on the salesman\'s profile screen.'),
 
                     TextInput::make('phone')
                         ->tel()
@@ -292,9 +298,6 @@ class UserResource extends Resource
                     }),
             ])
             ->bulkActions([
-                // No bulk delete: each deletion rewrites an email address and
-                // revokes tokens, which is not something to do to a checkbox
-                // selection by accident.
                 \Filament\Tables\Actions\BulkAction::make('verifyEmail')
                     ->label('Verify email')
                     ->icon('heroicon-o-check-badge')
@@ -307,6 +310,57 @@ class UserResource extends Resource
                                 event(new Verified($record));
                             }
                         }
+                    }),
+
+                // Bulk delete, deliberately harder to trigger than the
+                // per-row one on the Edit page: a checkbox selection is easy
+                // to get wrong, and deleting a user releases their email for
+                // reuse and force-signs them out everywhere. The type-to-
+                // confirm field is on top of Filament's own confirmation
+                // modal, not instead of it. UserPolicy::delete() is still
+                // re-checked per record here — a custom BulkAction does not
+                // auto-authorize the way DeleteBulkAction does — so admin
+                // accounts (unless you're a super-admin) and your own
+                // account are silently skipped rather than deleted.
+                \Filament\Tables\Actions\BulkAction::make('deleteSelected')
+                    ->label('Delete selected')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('Delete selected users?')
+                    ->modalDescription(
+                        'This releases each account\'s email/phone for reuse, force-signs '
+                        .'them out on every device, and cannot be undone as a batch. Admin '
+                        .'accounts and your own account are always skipped.'
+                    )
+                    ->modalSubmitActionLabel('Delete')
+                    ->form([
+                        TextInput::make('confirmation')
+                            ->label('Type DELETE to confirm')
+                            ->required()
+                            ->rule('in:DELETE')
+                            ->validationMessages(['in' => 'Type DELETE exactly, in capitals, to confirm.']),
+                    ])
+                    ->deselectRecordsAfterCompletion()
+                    ->action(function (Collection $records): void {
+                        $deleted = 0;
+                        $skipped = 0;
+
+                        foreach ($records as $record) {
+                            if (Auth::user()?->can('delete', $record)) {
+                                $record->delete();
+                                $deleted++;
+                            } else {
+                                $skipped++;
+                            }
+                        }
+
+                        Notification::make()
+                            ->title($skipped > 0
+                                ? "Deleted {$deleted}, skipped {$skipped} (admin/self accounts are never bulk-deleted)."
+                                : "Deleted {$deleted} user(s).")
+                            ->success()
+                            ->send();
                     }),
             ]);
     }

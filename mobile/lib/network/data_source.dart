@@ -40,6 +40,8 @@ class DataSource {
   static const String zones = 'zones';
   static const String subscriptions = 'subscriptions';
   static const String settings = 'settings';
+  static const String salesmanMe = 'salesmen/me';
+  static const String userPreferences = 'user/preferences';
   static const String salesmanVendors = 'salesmen/me/vendors';
   static const String salesmanCommissions = 'salesmen/me/commissions';
   static const String vendorMe = 'vendors/me';
@@ -292,6 +294,18 @@ class DataSource {
 
   // ── Salesman (My Vendors / Earnings, SPEC 2.3, 2.4) ──────────────────────
 
+  /// The salesman's own profile plus headline stats (SPEC section 2.5).
+  Future<CommonResponse?> salesmanMeAPI() => _get(salesmanMe);
+
+  /// Name and phone only — everything else on the salesman record is
+  /// admin-owned, and the server rejects the rest regardless.
+  Future<CommonResponse?> updateSalesmanProfileAPI({required Map<String, dynamic> body}) =>
+      _patch(salesmanMe, body);
+
+  /// Language and the notification mute, shared by all three apps.
+  Future<CommonResponse?> updatePreferencesAPI({required Map<String, dynamic> body}) =>
+      _patch(userPreferences, body);
+
   Future<CommonResponse?> salesmanVendorsAPI() => _get(salesmanVendors);
 
   Future<CommonResponse?> salesmanCommissionsAPI() => _get(salesmanCommissions);
@@ -374,6 +388,18 @@ class DataSource {
     } catch (e) {
       if (kDebugMode) {
         print('DELETE $path failed: $e');
+      }
+      return null;
+    }
+  }
+
+  Future<CommonResponse?> _patch(String path, Map<String, dynamic> body) async {
+    try {
+      final response = await _dio.patch(path, data: body);
+      return _parse(response);
+    } catch (e) {
+      if (kDebugMode) {
+        print('PATCH $path failed: $e');
       }
       return null;
     }

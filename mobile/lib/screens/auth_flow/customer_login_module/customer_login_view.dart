@@ -18,6 +18,9 @@ class CustomerLoginView extends StatelessWidget {
           title: StringRes.customerLoginTitle,
           subtitle: StringRes.customerLoginDesc,
           formKey: controller.formKey,
+          brandIcon: Icons.handyman_outlined,
+          brandTitle: StringRes.customerPortal,
+          brandSubtitle: StringRes.customerPortalDesc,
           showBack: false,
           fields: [
             AuthTextField(

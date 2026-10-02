@@ -18,6 +18,27 @@ class _RecordingSalesmanDataSource extends DataSource {
   bool vendorsSucceed = true;
   bool commissionsSucceed = true;
 
+  /// The redesigned home hero fetches this on init for its stat tiles;
+  /// without a stub the controller would hit real Dio and leave a pending
+  /// timer in every test that builds the screen.
+  @override
+  Future<CommonResponse?> salesmanMeAPI() async {
+    return CommonResponse.fromJson({
+      'success': true,
+      'data': {
+        'salesman': {'id': 1, 'name': 'Ramprakash', 'employee_code': 'SM-1'},
+        'stats': {
+          'total_vendors': vendorRows.length,
+          'subscribed_vendors': 0,
+          'earnings_paise': 0,
+          'pending_earnings_paise': 0,
+          'target': {'monthly_target_paise': 0, 'achieved_paise': 0, 'percent': null},
+        },
+      },
+      'error': null,
+    });
+  }
+
   @override
   Future<CommonResponse?> salesmanVendorsAPI() async {
     if (!vendorsSucceed) {
@@ -175,14 +196,14 @@ void main() {
 
   group('SalesmanHomeView', () {
     testWidgets(
-      'the app bar Add vendor icon navigates to AddVendorView from either tab',
+      'the hero Add vendor button navigates to AddVendorView',
       (tester) async {
         DataSource.instance = _RecordingSalesmanDataSource();
 
         await tester.pumpWidget(const GetMaterialApp(home: SalesmanHomeView()));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.person_add_alt_1));
+        await tester.tap(find.byIcon(Icons.add).first);
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);

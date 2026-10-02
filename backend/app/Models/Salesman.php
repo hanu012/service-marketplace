@@ -22,6 +22,7 @@ class Salesman extends Model
         'user_id',
         'employee_code',
         'phone',
+        'region',
         'monthly_target_paise',
         'commission_rate_bps',
         'is_active',

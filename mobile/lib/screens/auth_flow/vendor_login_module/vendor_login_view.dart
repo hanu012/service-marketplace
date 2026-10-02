@@ -19,6 +19,9 @@ class VendorLoginView extends StatelessWidget {
           title: StringRes.vendorLoginTitle,
           subtitle: StringRes.vendorLoginDesc,
           formKey: controller.formKey,
+          brandIcon: Icons.storefront_outlined,
+          brandTitle: StringRes.vendorPortal,
+          brandSubtitle: StringRes.vendorPortalDesc,
           showBack: false,
           fields: [
             AuthTextField(

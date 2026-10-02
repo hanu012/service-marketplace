@@ -30,6 +30,19 @@ class SalesmanLoginView extends StatelessWidget {
           // No back chip: this is the first screen of the flavour, there is
           // nothing behind it to return to.
           showBack: false,
+          brandIcon: Icons.explore_outlined,
+          brandTitle: StringRes.salesmanPortal,
+          brandSubtitle: StringRes.salesmanPortalDesc,
+          extras: AuthExtrasRow(
+            checkboxLabel: StringRes.rememberMe,
+            checked: controller.rememberMe,
+            onCheckedChanged: controller.toggleRememberMe,
+            actionLabel: StringRes.forgotPassword,
+            onAction: controller.forgotPasswordAPI,
+          ),
+          // Salesmen arrive with an admin-issued temporary password and are
+          // forced to change it, so say so before they wonder why.
+          tip: const AuthTipBox(message: StringRes.firstLoginTip),
           fields: [
             AuthTextField(
               label: StringRes.email,

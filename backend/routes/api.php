@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DeleteAccountController;
 use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\Api\PreferenceController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PasswordResetController;
@@ -214,6 +215,8 @@ Route::middleware(['auth:sanctum', 'role:salesman,admin,vendor'])->group(functio
 // A salesman's own records (SPEC sections 2.3, 2.4) — never admin, since
 // there is no "own vendors" concept for an admin here.
 Route::middleware(['auth:sanctum', 'role:salesman'])->group(function () {
+    Route::get('/salesmen/me', [SalesmanController::class, 'me']);
+    Route::patch('/salesmen/me', [SalesmanController::class, 'updateMe']);
     Route::get('/salesmen/me/vendors', [SalesmanController::class, 'vendors']);
     Route::get('/salesmen/me/commissions', [SalesmanController::class, 'commissions']);
 });
@@ -221,6 +224,13 @@ Route::middleware(['auth:sanctum', 'role:salesman'])->group(function () {
 Route::get('/user', function (Request $request) {
     return ApiResponse::success(new UserResource($request->user()));
 })->middleware('auth:sanctum');
+
+// Language and the notification mute (SPEC section 2.5's profile screen).
+// Role-agnostic: all three apps show the same two switches. Admin is
+// excluded for the same reason as account deletion below — the panel is
+// not one of these apps.
+Route::patch('/user/preferences', [PreferenceController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:vendor,salesman,customer']);
 
 // Self-service account deletion (SPEC section 4 item 10, "required for
 // app store compliance"). Deliberately excludes admin — closed by

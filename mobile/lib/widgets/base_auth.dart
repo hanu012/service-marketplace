@@ -41,6 +41,224 @@ class _AuthTokens {
 
   /// Minimum tap target for the back chip and the password eye.
   static double get tapTarget => 46.getSize;
+
+  /// Corner radius on the form card and the tip callout.
+  static double get cardRadius => 24.getSize;
+}
+
+/// App-icon tile, product name and strapline above the form card.
+///
+/// Each flavour supplies its own copy, so the three apps share one layout
+/// without claiming to be the same product.
+class AuthBrandHeader extends StatelessWidget {
+  const AuthBrandHeader({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+  });
+
+  final IconData icon;
+
+  /// Translation key.
+  final String title;
+
+  /// Translation key.
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    // Full width so `crossAxisAlignment: center` has room to actually
+    // centre against. AuthScaffold's column is start-aligned, so without
+    // this the header shrink-wraps its content and hugs the left edge.
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            height: 78.getSize,
+            width: 78.getSize,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [ColorRes.primaryColorLight, ColorRes.primaryColorDark],
+              ),
+              borderRadius: BorderRadius.circular(24.getSize),
+              boxShadow: [
+                BoxShadow(
+                  color: ColorRes.primaryColor.withValues(alpha: 0.45),
+                  blurRadius: 32.getSize,
+                  offset: Offset(0, 12.getSize),
+                ),
+              ],
+            ),
+            child: Icon(icon, size: 38.getSize, color: ColorRes.whiteColor),
+          ),
+          18.heightSpacer,
+          BaseTextDMSans(
+            text: title,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: ColorRes.secondaryColor,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+          ).tr(),
+          if (subtitle != null) ...[
+            6.heightSpacer,
+            BaseTextDMSans(
+              text: subtitle!,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w400,
+              color: ColorRes.grayColor,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+            ).tr(),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Remember me" plus an inline action on the right.
+class AuthExtrasRow extends StatelessWidget {
+  const AuthExtrasRow({
+    super.key,
+    required this.checkboxLabel,
+    required this.checked,
+    required this.onCheckedChanged,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  /// Translation key.
+  final String checkboxLabel;
+
+  final bool checked;
+  final ValueChanged<bool> onCheckedChanged;
+
+  /// Translation key for the right-hand link.
+  final String? actionLabel;
+
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Flexible(
+          child: GestureDetector(
+            onTap: () => onCheckedChanged(!checked),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  height: 22.getSize,
+                  width: 22.getSize,
+                  decoration: BoxDecoration(
+                    color: checked
+                        ? ColorRes.primaryColor
+                        : ColorRes.transparent,
+                    borderRadius: BorderRadius.circular(7.getSize),
+                    border: Border.all(
+                      color: checked
+                          ? ColorRes.primaryColor
+                          : ColorRes.borderColor,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: checked
+                      ? Icon(
+                          Icons.check,
+                          size: 15.getSize,
+                          color: ColorRes.whiteColor,
+                        )
+                      : null,
+                ),
+                10.widthSpacer,
+                Flexible(
+                  child: BaseTextDMSans(
+                    text: checkboxLabel,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: ColorRes.grayColor,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ).tr(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (actionLabel != null && onAction != null) ...[
+          8.widthSpacer,
+          Flexible(
+            child: GestureDetector(
+              onTap: onAction,
+              child: BaseTextDMSans(
+                text: actionLabel!,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: ColorRes.primaryColorLight,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ).tr(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The muted callout under the card — the first-login temp-password note.
+class AuthTipBox extends StatelessWidget {
+  const AuthTipBox({super.key, required this.message, this.icon});
+
+  /// Translation key.
+  final String message;
+
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.getSize),
+      decoration: BoxDecoration(
+        color: ColorRes.surfaceColor.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(_AuthTokens.cardRadius),
+        border: Border.all(color: ColorRes.borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon ?? Icons.lightbulb_outline,
+            size: 18.getSize,
+            color: ColorRes.primaryColorLight,
+          ),
+          12.widthSpacer,
+          Expanded(
+            child: BaseTextDMSans(
+              text: message,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w400,
+              color: ColorRes.grayColor,
+              textAlign: TextAlign.start,
+              lineHeight: 1.45,
+              maxLines: 4,
+            ).tr(),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Page chrome: ambient glow, back chip, title block, then the caller's form.
@@ -66,7 +284,32 @@ class AuthScaffold extends StatelessWidget {
     required this.primaryAction,
     this.showBack = false,
     this.footer,
+    this.brandIcon,
+    this.brandTitle,
+    this.brandSubtitle,
+    this.extras,
+    this.tip,
   });
+
+  /// Glyph for the app-icon tile above the card. Supplying it (with
+  /// [brandTitle]) turns on the branded header; screens that omit it keep
+  /// the plainer stacked layout.
+  final IconData? brandIcon;
+
+  /// Translation key for the product name under the icon — "Salesman
+  /// Portal". Each flavour passes its own, so the three apps share one
+  /// layout without pretending to be the same product.
+  final String? brandTitle;
+
+  /// Translation key for the line under it.
+  final String? brandSubtitle;
+
+  /// Row between the last field and the button — "Remember me" plus
+  /// "Forgot password?".
+  final Widget? extras;
+
+  /// Callout under the card, e.g. the first-login temp-password note.
+  final Widget? tip;
 
   /// Translation key for the screen's headline.
   final String title;
@@ -115,39 +358,75 @@ class AuthScaffold extends StatelessWidget {
                 children: [
                   if (showBack) ...[
                     const AuthBackChip(),
-                    24.heightSpacer,
+                    20.heightSpacer,
                   ] else
-                    16.heightSpacer,
-                  BaseTextDMSans(
-                    text: title,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: ColorRes.secondaryColor,
-                    textAlign: TextAlign.start,
-                    maxLines: 2,
-                  ).tr(),
-                  10.heightSpacer,
-                  BaseTextDMSans(
-                    text: subtitle,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    color: ColorRes.grayColor,
-                    textAlign: TextAlign.start,
-                    lineHeight: 1.45,
-                    maxLines: 3,
-                  ).tr(),
-                  32.heightSpacer,
-                  Form(
-                    key: formKey,
+                    8.heightSpacer,
+                  if (brandTitle != null) ...[
+                    AuthBrandHeader(
+                      icon: brandIcon ?? Icons.storefront_outlined,
+                      title: brandTitle!,
+                      subtitle: brandSubtitle,
+                    ),
+                    26.heightSpacer,
+                  ],
+                  // The form sits in a raised card so the branded header
+                  // above it reads as product identity rather than as part
+                  // of the form.
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(22.getSize),
+                    decoration: BoxDecoration(
+                      color: ColorRes.surfaceColor,
+                      borderRadius: BorderRadius.circular(
+                        _AuthTokens.cardRadius,
+                      ),
+                      border: Border.all(color: ColorRes.borderColor),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 30.getSize,
+                          offset: Offset(0, 12.getSize),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: fields,
+                      children: [
+                        BaseTextDMSans(
+                          text: title,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: ColorRes.secondaryColor,
+                          textAlign: TextAlign.start,
+                          maxLines: 2,
+                        ).tr(),
+                        10.heightSpacer,
+                        BaseTextDMSans(
+                          text: subtitle,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          color: ColorRes.grayColor,
+                          textAlign: TextAlign.start,
+                          lineHeight: 1.45,
+                          maxLines: 3,
+                        ).tr(),
+                        26.heightSpacer,
+                        Form(
+                          key: formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: fields,
+                          ),
+                        ),
+                        if (extras != null) ...[16.heightSpacer, extras!],
+                        24.heightSpacer,
+                        primaryAction,
+                      ],
                     ),
                   ),
-                  28.heightSpacer,
-                  primaryAction,
+                  if (tip != null) ...[16.heightSpacer, tip!],
                   if (footer != null) ...[
-                    24.heightSpacer,
+                    20.heightSpacer,
                     Center(child: footer!),
                   ],
                 ],
@@ -303,11 +582,7 @@ class AuthTextField extends StatelessWidget {
             horizontal: 16.getSize,
             vertical: _AuthTokens.fieldPadding,
           ),
-          prefixIcon: Icon(
-            icon,
-            size: 20.getSize,
-            color: ColorRes.grayColor,
-          ),
+          prefixIcon: Icon(icon, size: 20.getSize, color: ColorRes.grayColor),
           suffixIcon: suffixIcon,
         ),
         if (!isLast) SizedBox(height: _AuthTokens.fieldGap),
@@ -371,10 +646,7 @@ class AuthPrimaryButton extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [
-            ColorRes.primaryColor,
-            ColorRes.primaryColorDark,
-          ],
+          colors: [ColorRes.primaryColor, ColorRes.primaryColorDark],
         ),
         boxShadow: [
           BoxShadow(

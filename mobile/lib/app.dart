@@ -65,10 +65,18 @@ class ServiceMarketplaceApp extends StatelessWidget {
       // A corner ribbon naming the running flavour — the three apps look
       // alike on a dev device otherwise. Debug builds only; never shipped.
       builder: (context, child) {
-        final content = child ?? const SizedBox.shrink();
+        Widget content = child ?? const SizedBox.shrink();
 
         if (!kDebugMode) return content;
 
+        // The phone bezel/notch/frame around this (when running on web)
+        // lives OUTSIDE the app now — a wrapper HTML page embeds the
+        // dev-server build in a real phone-dimensioned iframe. That gives
+        // GetX's Get.width/Get.height (which `.getSize` etc. scale off,
+        // and which read the actual rendering surface, not any in-app
+        // MediaQuery override — see mobile/device_preview/README.md) the
+        // real phone width to scale against, instead of faking a frame
+        // in-app and fighting that scaling. See mobile/device_preview/.
         return Banner(
           message: config.flavor.name.toUpperCase(),
           location: BannerLocation.topStart,

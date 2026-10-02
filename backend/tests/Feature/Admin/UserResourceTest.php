@@ -290,12 +290,69 @@ class UserResourceTest extends TestCase
             ->assertActionVisible('restoreWithOriginalEmail');
     }
 
-    public function test_there_is_no_bulk_delete(): void
+    /**
+     * Bulk delete exists, but deliberately isn't Filament's stock
+     * DeleteBulkAction — it's a custom action gated by a type-to-confirm
+     * field on top of the usual confirmation modal, since a checkbox
+     * selection is an easy way to get this wrong.
+     */
+    public function test_bulk_delete_exists_but_is_not_the_stock_action(): void
     {
-        // Each deletion rewrites an email and revokes tokens — not something
-        // to do to a checkbox selection by accident.
         Livewire::test(ListUsers::class)
+            ->assertTableBulkActionExists('deleteSelected')
             ->assertTableBulkActionDoesNotExist(\Filament\Tables\Actions\DeleteBulkAction::class);
+    }
+
+    public function test_bulk_delete_without_the_typed_confirmation_deletes_nothing(): void
+    {
+        $vendor = User::factory()->role(UserRole::Vendor)->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableBulkAction('deleteSelected', [$vendor], data: ['confirmation' => 'delete'])
+            ->assertHasTableBulkActionErrors(['confirmation' => 'in']);
+
+        $this->assertNull($vendor->fresh()->deleted_at);
+    }
+
+    public function test_bulk_delete_removes_selected_users_and_tombstones_their_email(): void
+    {
+        $vendor = User::factory()->role(UserRole::Vendor)->create(['email' => 'bulk-v@example.com']);
+        $customer = User::factory()->role(UserRole::Customer)->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableBulkAction('deleteSelected', [$vendor, $customer], data: ['confirmation' => 'DELETE'])
+            ->assertHasNoTableBulkActionErrors();
+
+        $this->assertNotNull($vendor->fresh()->deleted_at);
+        $this->assertNotNull($customer->fresh()->deleted_at);
+    }
+
+    /**
+     * UserPolicy::delete() forbids a non-super-admin deleting an admin, and
+     * forbids anyone deleting themselves. A custom BulkAction does not
+     * auto-authorize per record the way DeleteBulkAction does, so this is
+     * re-checked by hand inside the action — this test is what actually
+     * proves that check runs, not just that it exists in the policy.
+     */
+    public function test_bulk_delete_skips_admin_accounts_and_the_actor_themself_for_a_sub_admin(): void
+    {
+        $subAdmin = User::factory()->subAdmin(['users.viewAny', 'users.delete'])->create();
+        $this->actingAs($subAdmin);
+
+        $otherAdmin = User::factory()->role(UserRole::Admin)->create();
+        $vendor = User::factory()->role(UserRole::Vendor)->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableBulkAction(
+                'deleteSelected',
+                [$subAdmin, $otherAdmin, $vendor],
+                data: ['confirmation' => 'DELETE'],
+            )
+            ->assertHasNoTableBulkActionErrors();
+
+        $this->assertNull($subAdmin->fresh()->deleted_at, 'the acting user must never bulk-delete themselves');
+        $this->assertNull($otherAdmin->fresh()->deleted_at, 'a sub-admin must never bulk-delete an admin');
+        $this->assertNotNull($vendor->fresh()->deleted_at);
     }
 
     public function test_a_duplicate_email_is_rejected(): void

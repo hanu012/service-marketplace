@@ -121,6 +121,60 @@ class Utils {
   /// bitmap. That asset is light-blue branding and does not exist here, so the
   /// header is a teal-to-slate gradient instead — same layout, no asset, and
   /// it recolours with the palette rather than needing a new export.
+  /// Paise → "₹1,234.50".
+  ///
+  /// Money is stored as integer paise everywhere (CLAUDE.md), so every
+  /// screen that shows an amount has to divide by 100 — doing it inline is
+  /// how two screens end up disagreeing about the same figure.
+  static String rupees(int paise) {
+    final rupees = paise / 100;
+    final fixed = rupees.toStringAsFixed(2);
+    final parts = fixed.split('.');
+
+    return '₹${_withThousandsSeparators(parts[0])}.${parts[1]}';
+  }
+
+  /// Paise → "₹12k" for a stat tile, where the exact figure matters less
+  /// than fitting in the box. Falls back to the full form under ₹1,000.
+  static String compactRupees(int paise) {
+    final rupees = paise / 100;
+
+    if (rupees >= 10000000) {
+      return '₹${(rupees / 10000000).toStringAsFixed(1)}Cr';
+    }
+    if (rupees >= 100000) {
+      return '₹${(rupees / 100000).toStringAsFixed(1)}L';
+    }
+    if (rupees >= 1000) {
+      return '₹${(rupees / 1000).toStringAsFixed(rupees % 1000 == 0 ? 0 : 1)}k';
+    }
+
+    return '₹${rupees.toStringAsFixed(0)}';
+  }
+
+  /// Indian grouping — 12,34,567 rather than 1,234,567: the last three
+  /// digits, then twos.
+  static String _withThousandsSeparators(String digits) {
+    if (digits.length <= 3) {
+      return digits;
+    }
+
+    final last3 = digits.substring(digits.length - 3);
+    var rest = digits.substring(0, digits.length - 3);
+    final groups = <String>[];
+
+    while (rest.length > 2) {
+      groups.insert(0, rest.substring(rest.length - 2));
+      rest = rest.substring(0, rest.length - 2);
+    }
+
+    if (rest.isNotEmpty) {
+      groups.insert(0, rest);
+    }
+
+    return '${groups.join(',')},$last3';
+  }
+
   static Widget authLayout({
     required Widget contentWidget,
     required String title,

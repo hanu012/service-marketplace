@@ -20,9 +20,61 @@ class SalesmanLoginController extends GetxController {
 
   bool obscurePassword = true;
 
+  /// Remembers the EMAIL only, never the password. This app stores no
+  /// credentials, and a temp-password flow makes that especially unwise —
+  /// the convenience being bought is not retyping an address.
+  bool rememberMe = false;
+
+  @override
+  void onInit() {
+    super.onInit();
+
+    final saved = Injector.prefs?.getString(PrefKeys.rememberedEmail) ?? '';
+
+    if (saved.isNotEmpty) {
+      emailController.text = saved;
+      rememberMe = true;
+    }
+  }
+
   void togglePasswordVisibility() {
     obscurePassword = !obscurePassword;
     update();
+  }
+
+  void toggleRememberMe(bool value) {
+    rememberMe = value;
+    update();
+  }
+
+  /// Sends a reset link to whatever is in the email field.
+  ///
+  /// The response is deliberately identical whether or not the address is
+  /// registered — matching the server, which does the same so this cannot
+  /// be used to discover who has an account.
+  Future<void> forgotPasswordAPI() async {
+    final email = emailController.text.trim();
+
+    if (email.isEmpty || !GetUtils.isEmail(email)) {
+      autoValidateMode = AutovalidateMode.onUserInteraction;
+      update();
+      Utils.showToast(tr(StringRes.enterEmailFirst), isError: true);
+      return;
+    }
+
+    try {
+      Utils.showCircularProgressLottie(true);
+      await DataSource.instance.forgotPasswordAPI(body: {'email': email});
+      Utils.showCircularProgressLottie(false);
+
+      Utils.showToast(tr(StringRes.resetLinkSent));
+    } catch (e) {
+      Utils.showCircularProgressLottie(false);
+      if (kDebugMode) {
+        print('Forgot password error $e');
+      }
+      Utils.showToast(tr(StringRes.somethingWentWrong), isError: true);
+    }
   }
 
   Future<void> loginAPI() async {
@@ -64,6 +116,17 @@ class SalesmanLoginController extends GetxController {
 
       UserModel userModel = UserModel.fromJson(commonResponse.data);
       await Injector.setUserData(userModel);
+
+      // Persisted only on success: remembering an address that just failed
+      // to sign in would prefill a typo forever.
+      if (rememberMe) {
+        await Injector.prefs?.setString(
+          PrefKeys.rememberedEmail,
+          emailController.text.trim(),
+        );
+      } else {
+        await Injector.prefs?.remove(PrefKeys.rememberedEmail);
+      }
 
       // SPEC section 2.1: forced password change on first login. The server
       // enforces this too — every other endpoint returns

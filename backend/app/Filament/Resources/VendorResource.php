@@ -1,0 +1,324 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Filament\Resources\VendorResource\Pages;
+use App\Models\Plan;
+use App\Models\Vendor;
+use App\Support\ActiveSubscriptionSummary;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
+use Filament\Resources\Resource;
+use Filament\Tables\Actions\ViewAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TrashedFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+/**
+ * All vendors, and what each one is actually subscribed to (SPEC section
+ * 5.2) — the read-only counterpart to VendorVerificationResource, which is
+ * a decision queue scoped to `pending_verification` and therefore cannot
+ * answer "what did this active vendor buy?".
+ *
+ * READ-ONLY BY DESIGN: no Create, Edit or Delete.
+ *   - Creating a vendor means creating its User, its profile and usually a
+ *     subscription together — that transaction belongs to the salesman
+ *     flow (VendorDraftService) and User Management, not to a second
+ *     half-complete path here.
+ *   - Editing a vendor's services/zones is quota-governed
+ *     (SubscriptionService + ServiceSelectionValidator); a plain Filament
+ *     form would bypass every one of those rules.
+ *   - Approving/rejecting stays in the verification queue, so there is one
+ *     place where that decision is made and audited.
+ * Same "the omission is the enforcement" shape CategoryResource documents.
+ *
+ * The subscription block is rendered from [ActiveSubscriptionSummary], the
+ * same source `GET /vendors/me` and the salesman's detail screen read, so
+ * the panel cannot disagree with the apps about a vendor's quota.
+ */
+class VendorResource extends Resource
+{
+    protected static ?string $model = Vendor::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
+
+    protected static ?string $navigationLabel = 'Vendors';
+
+    protected static ?string $navigationGroup = 'People';
+
+    protected static ?int $navigationSort = 0;
+
+    protected static ?string $recordTitleAttribute = 'business_name';
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['user', 'subscriptions.plan'])
+            ->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->defaultSort('business_name')
+            ->columns([
+                TextColumn::make('business_name')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold'),
+
+                TextColumn::make('owner_name')
+                    ->searchable()
+                    ->toggleable(),
+
+                TextColumn::make('phone')
+                    ->searchable(),
+
+                TextColumn::make('user.email')
+                    ->label('Email')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('status')
+                    ->badge()
+                    ->sortable()
+                    ->color(fn (string $state): string => match ($state) {
+                        'active' => 'success',
+                        'grace' => 'warning',
+                        'expired', 'rejected' => 'danger',
+                        'pending_verification', 'pending_payment' => 'info',
+                        default => 'gray',
+                    }),
+
+                // Resolved per row rather than joined: currentActiveSubscription()
+                // is the single definition of "active or still in grace", and
+                // duplicating that window as a query here is how the list and
+                // the detail page start disagreeing.
+                TextColumn::make('plan')
+                    ->label('Plan')
+                    ->state(fn (Vendor $record): ?string => $record->currentActiveSubscription()?->plan->name)
+                    ->badge()
+                    ->color('primary')
+                    ->placeholder('Not subscribed'),
+
+                TextColumn::make('expires')
+                    ->label('Expires')
+                    ->state(fn (Vendor $record): ?string => $record->currentActiveSubscription()
+                        ?->end_date->toFormattedDateString())
+                    ->placeholder('—'),
+
+                TextColumn::make('created_at')
+                    ->label('Added')
+                    ->dateTime('d M Y')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                SelectFilter::make('status')
+                    ->options([
+                        'draft' => 'Draft',
+                        'pending_payment' => 'Pending payment',
+                        'pending_verification' => 'Pending verification',
+                        'active' => 'Active',
+                        'grace' => 'Grace',
+                        'expired' => 'Expired',
+                        'rejected' => 'Rejected',
+                    ]),
+
+                SelectFilter::make('plan')
+                    ->label('Plan')
+                    ->options(fn (): array => Plan::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['value'] ?? null,
+                        fn (Builder $q, $planId) => $q->whereHas(
+                            'subscriptions',
+                            fn (Builder $s) => $s->where('plan_id', $planId)->where('end_date', '>=', now()),
+                        ),
+                    )),
+
+                Filter::make('unsubscribed')
+                    ->label('Not subscribed')
+                    ->query(fn (Builder $query): Builder => $query->whereDoesntHave(
+                        'subscriptions',
+                        fn (Builder $s) => $s->where('end_date', '>=', now()),
+                    )),
+
+                TrashedFilter::make(),
+            ])
+            ->actions([ViewAction::make()])
+            ->bulkActions([
+                // Nothing to bulk-apply: this resource only reads.
+            ])
+            ->emptyStateHeading('No vendors yet')
+            ->emptyStateDescription('Vendors arrive from the salesman flow or self-registration.');
+    }
+
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            Section::make('Business')
+                ->columns(2)
+                ->schema([
+                    TextEntry::make('business_name'),
+                    TextEntry::make('owner_name'),
+                    TextEntry::make('phone'),
+                    TextEntry::make('user.email')->label('Email'),
+                    TextEntry::make('status')->badge(),
+                    TextEntry::make('createdBySalesman.user.name')
+                        ->label('Added by')
+                        ->placeholder('Self-registered'),
+                    TextEntry::make('address')->columnSpanFull()->placeholder('—'),
+                ]),
+
+            Section::make('Subscription')
+                ->description('Live plan, quota and selections — the same figures the vendor and salesman apps show.')
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('plan_name')
+                        ->label('Plan')
+                        ->state(fn (Vendor $record): string => static::summary($record)['plan_name'] ?? 'Not subscribed')
+                        ->badge()
+                        ->color(fn (Vendor $record): string => static::summary($record) === null ? 'gray' : 'success'),
+
+                    TextEntry::make('end_date')
+                        ->label('Expires')
+                        ->state(fn (Vendor $record): string => static::summary($record)['end_date'] ?? '—'),
+
+                    TextEntry::make('days_remaining')
+                        ->label('Days remaining')
+                        ->state(function (Vendor $record): string {
+                            $days = static::summary($record)['days_remaining'] ?? null;
+
+                            if ($days === null) {
+                                return '—';
+                            }
+
+                            // Negative means the vendor is inside the grace
+                            // window past end_date, which currentActiveSubscription()
+                            // still counts as active — surface that rather
+                            // than printing a bare "-3".
+                            return $days < 0 ? abs($days).' days into grace' : (string) $days;
+                        })
+                        ->badge()
+                        ->color(function (Vendor $record): string {
+                            $days = static::summary($record)['days_remaining'] ?? null;
+
+                            return match (true) {
+                                $days === null => 'gray',
+                                $days < 0 => 'danger',
+                                $days <= 7 => 'warning',
+                                default => 'success',
+                            };
+                        }),
+
+                    ...static::quotaEntries(),
+                ]),
+
+            Section::make('Selected services and zones')
+                ->description('What this vendor actually picked, within the quota above.')
+                ->schema([
+                    static::itemsEntry('categories', 'Categories'),
+                    static::itemsEntry('subcategories', 'Subcategories'),
+                    static::itemsEntry('zones', 'Coverage zones'),
+                ]),
+
+            Section::make('KYC documents')
+                ->columns(2)
+                ->schema([
+                    ImageEntry::make('shop_photo_path')
+                        ->label('Shop photo')
+                        ->disk(fn (Vendor $record): string => $record->disk ?? config('filesystems.default'))
+                        ->placeholder('Not provided'),
+
+                    TextEntry::make('id_proof_type')
+                        ->label('ID proof type')
+                        ->badge()
+                        ->placeholder('Not provided'),
+                ]),
+        ]);
+    }
+
+    /**
+     * One resolve per record per render. [ActiveSubscriptionSummary] runs
+     * several queries, and the infolist asks for the same vendor a dozen
+     * times across its entries — without this each page view would multiply
+     * that out.
+     *
+     * @var array<int, array<string, mixed>|null>
+     */
+    private static array $summaryCache = [];
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function summary(Vendor $vendor): ?array
+    {
+        return static::$summaryCache[$vendor->id] ??= ActiveSubscriptionSummary::for($vendor);
+    }
+
+    /**
+     * @return array<int, TextEntry>
+     */
+    private static function quotaEntries(): array
+    {
+        $resources = [
+            'categories' => 'Categories',
+            'subcategories' => 'Subcategories',
+            'zones' => 'Zones',
+            'photos' => 'Photos',
+            'videos' => 'Videos',
+        ];
+
+        $entries = [];
+
+        foreach ($resources as $key => $label) {
+            $entries[] = TextEntry::make("quota_{$key}")
+                ->label($label)
+                ->state(function (Vendor $record) use ($key): string {
+                    $quota = static::summary($record)['quota'][$key] ?? null;
+
+                    return $quota === null ? '—' : "{$quota['used']} / {$quota['max']}";
+                })
+                ->badge()
+                ->color(function (Vendor $record) use ($key): string {
+                    $quota = static::summary($record)['quota'][$key] ?? null;
+
+                    if ($quota === null) {
+                        return 'gray';
+                    }
+
+                    return $quota['used'] >= $quota['max'] ? 'warning' : 'primary';
+                });
+        }
+
+        return $entries;
+    }
+
+    private static function itemsEntry(string $key, string $label): TextEntry
+    {
+        return TextEntry::make("items_{$key}")
+            ->label($label)
+            ->state(function (Vendor $record) use ($key): array {
+                $items = static::summary($record)['items'][$key] ?? [];
+
+                return array_column($items, 'name');
+            })
+            ->badge()
+            ->placeholder('None selected')
+            ->columnSpanFull();
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListVendors::route('/'),
+            'view' => Pages\ViewVendor::route('/{record}'),
+        ];
+    }
+}

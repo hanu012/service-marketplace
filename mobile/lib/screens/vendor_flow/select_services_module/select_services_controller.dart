@@ -38,6 +38,13 @@ class SelectServicesController extends GetxController {
   final Set<int> selectedSubcategoryIds = {};
   final Set<int> selectedZoneIds = {};
 
+  // Display-only state (search/filter/expand) — none of this affects what
+  // gets selected or submitted, only what's visible while picking.
+  final TextEditingController searchController = TextEditingController();
+  String searchQuery = '';
+  int? activeCategoryFilterId;
+  final Set<int> expandedCategoryIds = {};
+
   /// 'cash', 'online', or 'free' — SPEC 2.2's third paid option, Cheque, has
   /// no backing enum value server-side (payments.mode is cash|online|free).
   String selectedPaymentMode = 'cash';
@@ -61,6 +68,13 @@ class SelectServicesController extends GetxController {
   void onInit() {
     super.onInit();
     fetchMasterDataAPI();
+  }
+
+  @override
+  void onClose() {
+    searchController.dispose();
+    zoneSearchController.dispose();
+    super.onClose();
   }
 
   Future<void> fetchMasterDataAPI() async {
@@ -124,6 +138,127 @@ class SelectServicesController extends GetxController {
 
   bool isZoneSelected(int zoneId) => selectedZoneIds.contains(zoneId);
 
+  void onSearchChanged(String value) {
+    searchQuery = value.trim().toLowerCase();
+    update();
+  }
+
+  /// null = "All" chip. Re-tapping the active chip clears the filter.
+  void selectCategoryFilter(int? categoryId) {
+    activeCategoryFilterId = activeCategoryFilterId == categoryId ? null : categoryId;
+    update();
+  }
+
+  void toggleCategoryExpanded(int categoryId) {
+    if (expandedCategoryIds.contains(categoryId)) {
+      expandedCategoryIds.remove(categoryId);
+    } else {
+      expandedCategoryIds.add(categoryId);
+    }
+    update();
+  }
+
+  /// A search in progress force-expands every match — no point hiding a
+  /// result the search itself just surfaced.
+  bool isCategoryExpanded(int categoryId) =>
+      searchQuery.isNotEmpty || expandedCategoryIds.contains(categoryId);
+
+  /// Categories left standing after the chip filter and the search box —
+  /// a category survives the search if its own name matches, or any of its
+  /// subcategories' names do (so searching "gas" still surfaces "AC
+  /// Service" for its "AC Gas Filling" child).
+  List<CategoryModel> get filteredCategories {
+    var list = categories;
+
+    if (activeCategoryFilterId != null) {
+      list = list.where((c) => c.id == activeCategoryFilterId).toList();
+    }
+
+    if (searchQuery.isEmpty) {
+      return list;
+    }
+
+    return list.where((c) {
+      final nameMatch = (c.name ?? '').toLowerCase().contains(searchQuery);
+      final subMatch = c.subcategories.any(
+        (s) => (s.name ?? '').toLowerCase().contains(searchQuery),
+      );
+      return nameMatch || subMatch;
+    }).toList();
+  }
+
+  List<SubcategoryModel> visibleSubcategories(CategoryModel category) {
+    if (searchQuery.isEmpty) {
+      return category.subcategories;
+    }
+    return category.subcategories
+        .where((s) => (s.name ?? '').toLowerCase().contains(searchQuery))
+        .toList();
+  }
+
+  /// Headroom left under each cap, floored at 0 — the counters the screen
+  /// puts in front of the salesman before they run out.
+  int get subcategoriesRemaining =>
+      (maxSubcategories - selectedSubcategoryIds.length).clamp(0, maxSubcategories);
+
+  int get zonesRemaining => (maxZones - selectedZoneIds.length).clamp(0, maxZones);
+
+  int selectedCountIn(CategoryModel category) => category.subcategories
+      .where((sub) => selectedSubcategoryIds.contains(sub.id))
+      .length;
+
+  int selectedCountInCity(ZoneModel city) =>
+      city.children.where((zone) => selectedZoneIds.contains(zone.id)).length;
+
+  /// A zone with children is a city grouping (SPEC section 8's zone
+  /// hierarchy); a childless top-level zone is itself a leaf and directly
+  /// selectable, so it gets its own card rather than being dropped.
+  List<ZoneModel> get zoneCities => zones.where((zone) => !zone.isLeaf).toList();
+
+  List<ZoneModel> get standaloneZones => zones.where((zone) => zone.isLeaf).toList();
+
+  /// The zones step runs its own search box, independent of the services
+  /// one — the two screens narrow different lists and should not fight over
+  /// a single query string.
+  final TextEditingController zoneSearchController = TextEditingController();
+  String zoneSearchQuery = '';
+
+  void onZoneSearchChanged(String value) {
+    zoneSearchQuery = value.trim().toLowerCase();
+    update();
+  }
+
+  /// Cities that still have a matching area, with non-matching areas
+  /// stripped out — searching "bopal" should surface Ahmedabad holding only
+  /// Bopal, not the whole city.
+  List<ZoneModel> get filteredZoneCities {
+    if (zoneSearchQuery.isEmpty) {
+      return zoneCities;
+    }
+
+    return zoneCities
+        .where((city) => visibleZonesIn(city).isNotEmpty)
+        .toList();
+  }
+
+  List<ZoneModel> visibleZonesIn(ZoneModel city) {
+    if (zoneSearchQuery.isEmpty) {
+      return city.children;
+    }
+    return city.children
+        .where((zone) => (zone.name ?? '').toLowerCase().contains(zoneSearchQuery))
+        .toList();
+  }
+
+  List<ZoneModel> get visibleStandaloneZones {
+    if (zoneSearchQuery.isEmpty) {
+      return standaloneZones;
+    }
+    return standaloneZones
+        .where((zone) => (zone.name ?? '').toLowerCase().contains(zoneSearchQuery))
+        .toList();
+  }
+
   bool get categoryQuotaReached => selectedCategoryIds.length >= maxCategories;
 
   bool get subcategoryQuotaReached => selectedSubcategoryIds.length >= maxSubcategories;
@@ -153,6 +288,7 @@ class SelectServicesController extends GetxController {
     }
 
     selectedCategoryIds.add(id);
+    expandedCategoryIds.add(id);
 
     // Cascade-select subcategories up to the remaining quota. Any left over
     // stay unselected and read as quota-disabled in the UI — the same
@@ -194,6 +330,7 @@ class SelectServicesController extends GetxController {
         return;
       }
       selectedCategoryIds.add(parentId);
+      expandedCategoryIds.add(parentId);
     }
 
     selectedSubcategoryIds.add(id);
@@ -231,9 +368,68 @@ class SelectServicesController extends GetxController {
     update();
   }
 
-  /// Checked before the payment-mode dialog opens, so a doomed submission
-  /// never gets that far.
-  bool validateSelections() {
+  /// Selects every subcategory in one category that still fits under the
+  /// plan's cap. Stops at the cap rather than refusing outright — a partial
+  /// "select all" is the useful behaviour when 3 of 5 still fit.
+  void selectAllIn(CategoryModel category) {
+    final id = category.id;
+    if (id == null) {
+      return;
+    }
+
+    if (!selectedCategoryIds.contains(id)) {
+      if (categoryQuotaReached) {
+        Utils.showToast(tr(StringRes.categoryQuotaReached), isError: true);
+        return;
+      }
+      selectedCategoryIds.add(id);
+    }
+
+    expandedCategoryIds.add(id);
+
+    var hitCap = false;
+    for (final sub in category.subcategories) {
+      if (sub.id == null || selectedSubcategoryIds.contains(sub.id)) {
+        continue;
+      }
+      if (subcategoryQuotaReached) {
+        hitCap = true;
+        break;
+      }
+      selectedSubcategoryIds.add(sub.id!);
+    }
+
+    if (hitCap) {
+      Utils.showToast(tr(StringRes.subcategoryQuotaReached), isError: true);
+    }
+
+    update();
+  }
+
+  /// Selects every zone in one city that still fits under the plan's cap.
+  void selectAllZonesIn(ZoneModel city) {
+    var hitCap = false;
+    for (final zone in city.children) {
+      if (zone.id == null || selectedZoneIds.contains(zone.id)) {
+        continue;
+      }
+      if (zoneQuotaReached) {
+        hitCap = true;
+        break;
+      }
+      selectedZoneIds.add(zone.id!);
+    }
+
+    if (hitCap) {
+      Utils.showToast(tr(StringRes.zoneQuotaReached), isError: true);
+    }
+
+    update();
+  }
+
+  /// Gate for leaving the services step. Zones are not checked here — they
+  /// are picked on the next screen, so blocking on them would be a dead end.
+  bool validateServices() {
     if (selectedCategoryIds.isEmpty) {
       Utils.showToast(tr(StringRes.selectACategory), isError: true);
       return false;
@@ -241,6 +437,17 @@ class SelectServicesController extends GetxController {
 
     if (selectedSubcategoryIds.isEmpty) {
       Utils.showToast(tr(StringRes.selectASubcategory), isError: true);
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Checked before the payment-mode dialog opens, so a doomed submission
+  /// never gets that far. Re-checks the services step too: the user can walk
+  /// back and clear it after having passed it once.
+  bool validateSelections() {
+    if (!validateServices()) {
       return false;
     }
 
