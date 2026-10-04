@@ -7,15 +7,14 @@ use App\Http\Controllers\Api\ChangePasswordController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DeleteAccountController;
 use App\Http\Controllers\Api\DeviceTokenController;
-use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\PreferenceController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LeadController;
-use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PlanController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SalesmanController;
+use App\Http\Controllers\Api\ServiceSearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\VendorController;
@@ -44,32 +43,33 @@ Route::prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])
         ->middleware('auth:sanctum');
 
-    // Changing your own password while signed in, as opposed to the emailed
-    // reset flow. This is the way out of a forced change (SPEC section 2.1),
-    // so RequirePasswordChange deliberately lets it through.
+    // The only password route left. There is no emailed reset flow and no
+    // email verification: the platform sends no mail at all, and admin
+    // approval is the single gate on an account (SPEC section 3.1).
+    //
+    // A locked-out user is recovered by an admin issuing a fresh temporary
+    // password from the Users list, which sets must_change_password — this
+    // route is then the way out of that, so RequirePasswordChange lets it
+    // through.
     Route::post('/change-password', ChangePasswordController::class)
         ->middleware(['auth:sanctum', 'throttle:change-password']);
-
-    Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])
-        ->middleware('throttle:password-email');
-
-    Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])
-        ->middleware('throttle:password-email');
-
-    // `signed` rejects tampered or expired links before the controller runs.
-    Route::get('/verify-email/{id}/{hash}', [EmailVerificationController::class, 'verify'])
-        ->middleware(['signed', 'throttle:verification'])
-        ->name('verification.verify');
-
-    // Intentionally unauthenticated: a vendor blocked from logging in for
-    // want of verification still needs a way to request a fresh link.
-    Route::post('/resend-verification', [EmailVerificationController::class, 'resend'])
-        ->middleware('throttle:verification');
 });
 
 // Public master data. No token: customers browse categories before signing
 // in, and the vendor/salesman apps need the tree to render plan selection.
 Route::get('/categories', [CategoryController::class, 'index'])
+    ->middleware('throttle:public-read');
+
+// "X vendors" per subcategory on the customer subcategories screen.
+// Zone/customer-specific, unlike /categories above, so it is its own
+// endpoint rather than a field on the cached tree.
+Route::get('/categories/{category}/vendor-counts', [CategoryController::class, 'vendorCounts'])
+    ->middleware('throttle:public-read');
+
+// Free-text service lookup for the customer search bar. Separate from
+// /categories above: that one returns the whole tree as cache-on-launch
+// master data, this returns a short ranked slice for a query.
+Route::get('/services/search', [ServiceSearchController::class, 'index'])
     ->middleware('throttle:public-read');
 
 Route::get('/plans', [PlanController::class, 'index'])
@@ -113,6 +113,11 @@ Route::get('/vendors/{vendor}/detail', [VendorDetailController::class, 'show'])
 // that wildcard route instead of ever reaching this one.
 Route::middleware(['auth:sanctum', 'role:vendor'])->group(function () {
     Route::get('/vendors/me', [VendorController::class, 'me']);
+
+    // The vendor editing their own business profile (SPEC section 3.2).
+    // No id in the path for the same reason as the GET: the vendor is
+    // resolved from the token, so there is no other record to reach.
+    Route::patch('/vendors/me', [VendorController::class, 'updateMe']);
 
     // Adding within remaining quota on the vendor's own active subscription
     // (SPEC section 3.3, task 4.4) — distinct from POST /subscriptions,

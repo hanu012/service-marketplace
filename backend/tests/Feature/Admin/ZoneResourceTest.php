@@ -221,6 +221,38 @@ class ZoneResourceTest extends TestCase
         $this->assertDatabaseHas('zones', ['slug' => 'ranip', 'parent_id' => $city->id]);
     }
 
+    public function test_editing_the_boundary_persists_the_new_polygon(): void
+    {
+        $zone = Zone::factory()->create(['name' => 'Naranpura']);
+
+        $before = DB::table('zones')
+            ->selectRaw('ST_AsText(polygon) as wkt')
+            ->where('id', $zone->getKey())
+            ->value('wkt');
+
+        // A boundary somewhere clearly different from the factory's.
+        $moved = ZoneFactory::square(23.06, 72.56);
+
+        Livewire::test(EditZone::class, ['record' => $zone->getKey()])
+            ->fillForm(['polygon_points' => $moved])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $after = DB::table('zones')
+            ->selectRaw('ST_AsText(polygon) as wkt')
+            ->where('id', $zone->getKey())
+            ->value('wkt');
+
+        $this->assertNotSame($before, $after, 'The stored boundary did not change.');
+
+        // And it round-trips back into the map as the points just saved.
+        $this->assertEqualsWithDelta(
+            $moved[0]['lat'],
+            Zone::pointsFromWkt($after)[0]['lat'],
+            0.0001,
+        );
+    }
+
     public function test_a_zone_with_children_cannot_be_given_a_parent(): void
     {
         // The same three-level tree, built from the other direction. SPEC

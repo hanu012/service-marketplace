@@ -29,6 +29,15 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Maps SDK for Android, used by the customer's "Choose on map"
+             screen. The value comes from MAPS_API_KEY in local.properties
+             via a manifest placeholder in build.gradle.kts — the key is
+             billable and is never committed. With no key the map tiles
+             fail to load and the rest of the screen still works. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

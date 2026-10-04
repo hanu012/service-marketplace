@@ -121,4 +121,33 @@ class EditUser extends EditRecord
     {
         return $this->getResource()::getUrl('index');
     }
+
+    /**
+     * Puts the user form itself in the tab strip alongside Vendor and
+     * Media, rather than above them.
+     *
+     * Without this Filament stacks the form and then the relation tabs
+     * underneath, so the vendor record and its uploads sit below a long
+     * form and are easy to miss entirely. Combined, the page reads as one
+     * record with three views of it.
+     */
+    public function hasCombinedRelationManagerTabsWithContent(): bool
+    {
+        return true;
+    }
+
+    /**
+     * The label for that first tab. "Account" rather than Filament's
+     * default record title, which would repeat the name already in the
+     * page heading.
+     */
+    public function getContentTabLabel(): ?string
+    {
+        return 'Account';
+    }
+
+    public function getContentTabIcon(): ?string
+    {
+        return 'heroicon-o-user';
+    }
 }

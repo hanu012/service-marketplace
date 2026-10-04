@@ -43,7 +43,7 @@ class MyVendorsView extends StatelessWidget {
   Widget body(MyVendorsController controller) {
     if (controller.isLoading && controller.vendors.isEmpty) {
       return const Center(
-        child: CupertinoActivityIndicator(color: ServiceTokens.purpleBright),
+        child: CupertinoActivityIndicator(color: ServiceTokens.accentBright),
       );
     }
 
@@ -55,7 +55,7 @@ class MyVendorsView extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: controller.fetchVendorsAPI,
-      color: ServiceTokens.purple,
+      color: ServiceTokens.accent,
       backgroundColor: ServiceTokens.card,
       child: ListView(
         padding: EdgeInsets.fromLTRB(16.getSize, 14.getSize, 16.getSize, 96.getSize),
@@ -77,7 +77,7 @@ class MyVendorsView extends StatelessWidget {
               ),
             )
           else
-            for (final vendor in filtered) vendorCard(vendor),
+            for (final vendor in filtered) vendorCard(controller, vendor),
         ],
       ),
     );
@@ -100,7 +100,7 @@ class MyVendorsView extends StatelessWidget {
             BaseRaisedButton(
               onPressed: () => addVendor(controller),
               buttonText: StringRes.addVendorTitle,
-              buttonColor: ServiceTokens.purple,
+              buttonColor: ServiceTokens.accent,
               isExpanded: false,
             ),
           ],
@@ -148,7 +148,7 @@ class MyVendorsView extends StatelessWidget {
                     : Icons.filter_alt_outlined,
                 size: 15.getSize,
                 color: controller.unsubscribedOnly
-                    ? ServiceTokens.purpleBright
+                    ? ServiceTokens.accentBright
                     : ServiceTokens.muted,
               ),
               5.widthSpacer,
@@ -159,7 +159,7 @@ class MyVendorsView extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: controller.unsubscribedOnly
-                    ? ServiceTokens.purpleBright
+                    ? ServiceTokens.accentBright
                     : ServiceTokens.muted,
                 maxLines: 1,
               ),
@@ -170,14 +170,20 @@ class MyVendorsView extends StatelessWidget {
     );
   }
 
-  Widget vendorCard(SalesmanVendorModel vendor) {
+  Widget vendorCard(MyVendorsController controller, SalesmanVendorModel vendor) {
     final subscribed = vendor.isSubscribed;
 
     return VendorCardShell(
       highlighted: subscribed,
+      // A draft is an unfinished sale, not a record to read: tapping it
+      // puts the salesman back into the onboarding where they left it
+      // rather than on a details page with no way to continue. Everything
+      // else is a finished vendor, so it still opens the detail screen.
       onTap: vendor.id == null
           ? null
-          : () => Get.to(() => SalesmanVendorDetailView(vendorId: vendor.id!)),
+          : vendor.isDraft
+              ? () => controller.resumeDraftAPI(vendor)
+              : () => Get.to(() => SalesmanVendorDetailView(vendorId: vendor.id!)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -248,7 +254,7 @@ class MyVendorsView extends StatelessWidget {
           child: BaseTextDMSans(
             text: expiryText(vendor.daysToExpiry),
             fontSize: 11.5,
-            color: expired ? const Color(0xFFF87171) : ServiceTokens.muted,
+            color: expired ? ColorRes.errorColor : ServiceTokens.muted,
             textAlign: TextAlign.start,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -275,7 +281,7 @@ class MyVendorsView extends StatelessWidget {
                 : tr(StringRes.subscribeAction),
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: subscribed ? ServiceTokens.muted : ServiceTokens.purpleBright,
+            color: subscribed ? ServiceTokens.muted : ServiceTokens.accentBright,
             textAlign: TextAlign.end,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -307,12 +313,12 @@ class MyVendorsView extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 20.getSize),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [ServiceTokens.purpleBright, ServiceTokens.purple],
+              colors: [ServiceTokens.accentBright, ServiceTokens.accent],
             ),
             borderRadius: BorderRadius.circular(16.getSize),
             boxShadow: [
               BoxShadow(
-                color: ServiceTokens.purple.withValues(alpha: 0.5),
+                color: ServiceTokens.accent.withValues(alpha: 0.5),
                 blurRadius: 30.getSize,
                 offset: Offset(0, 12.getSize),
               ),

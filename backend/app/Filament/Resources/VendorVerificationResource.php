@@ -44,6 +44,17 @@ class VendorVerificationResource extends Resource
 
     protected static ?string $navigationGroup = 'People';
 
+    /**
+     * Hidden from the sidebar: approve/reject now live on the Vendor tab
+     * of the owning user's page, where the KYC documents being judged are
+     * already on screen. The resource stays registered so its pages,
+     * policy and tests continue to back that tab.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static ?string $recordTitleAttribute = 'business_name';
 
     public static function getEloquentQuery(): Builder
@@ -67,23 +78,40 @@ class VendorVerificationResource extends Resource
             Section::make('KYC documents')
                 ->columns(2)
                 ->schema([
+                    // This is the screen the approve/reject decision is made
+                    // on, so both documents are shown as images and both
+                    // click through to the full-size original — the
+                    // thumbnail is not big enough to check an ID against a
+                    // business name.
                     ImageEntry::make('shop_photo_path')
                         ->label('Shop photo')
                         ->getStateUsing(fn (Vendor $record): ?string => $record->fileUrl())
+                        ->url(fn (Vendor $record): ?string => $record->fileUrl())
+                        ->openUrlInNewTab()
+                        ->tooltip('Open full size')
                         ->placeholder('Not provided'),
 
-                    TextEntry::make('id_proof_link')
+                    // Previously a text link reading just "Aadhaar", on the
+                    // grounds that an ID proof might be a PDF. It cannot be:
+                    // StoreKycRequest validates `id_proof` as
+                    // `image|mimes:jpg,jpeg,png,webp`, the same rule the
+                    // shop photo gets. Showing the document inline is the
+                    // difference between reviewing it and taking its word.
+                    ImageEntry::make('id_proof_path')
                         ->label('ID proof')
-                        // Not rendered as an image: an ID proof upload isn't
-                        // guaranteed to be an image (could be a PDF), unlike
-                        // the shop photo.
-                        ->getStateUsing(fn (Vendor $record): string => $record->id_proof_type
-                            ? ucfirst($record->id_proof_type)
-                            : 'Not provided')
-                        ->url(fn (Vendor $record): ?string => $record->id_proof_path
-                            ? $record->fileUrl($record->id_proof_path)
-                            : null)
-                        ->openUrlInNewTab(),
+                        ->getStateUsing(fn (Vendor $record): ?string => $record->fileUrl($record->id_proof_path))
+                        ->url(fn (Vendor $record): ?string => $record->fileUrl($record->id_proof_path))
+                        ->openUrlInNewTab()
+                        ->tooltip('Open full size')
+                        ->placeholder('Not provided'),
+
+                    TextEntry::make('id_proof_type')
+                        ->label('ID proof type')
+                        ->badge()
+                        ->formatStateUsing(fn (?string $state): string => $state === null
+                            ? 'Not provided'
+                            : ucfirst($state))
+                        ->placeholder('Not provided'),
                 ]),
         ]);
     }

@@ -4,15 +4,10 @@ namespace App\Providers;
 
 use App\Http\Responses\ApiResponse;
 use Filament\Resources\Resource;
-use Illuminate\Auth\Notifications\ResetPassword;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,7 +25,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureRateLimiters();
-        $this->configureNotificationUrls();
         $this->configureAuthorization();
     }
 
@@ -53,70 +47,6 @@ class AppServiceProvider extends ServiceProvider
         Resource::checkPolicyExistence(false);
     }
 
-    /**
-     * Points reset and verification links at FRONTEND_URL when it is set, so
-     * the emails can be aimed at a deep link or web page later without any
-     * code change. Falls back to APP_URL, which keeps the links resolvable
-     * against the API itself during local development.
-     */
-    private function configureNotificationUrls(): void
-    {
-        $frontend = rtrim((string) config('app.frontend_url'), '/');
-
-        ResetPassword::createUrlUsing(function (object $notifiable, string $token) use ($frontend) {
-            $query = http_build_query([
-                'token' => $token,
-                'email' => $notifiable->getEmailForPasswordReset(),
-            ]);
-
-            return $frontend
-                ? $frontend.'/reset-password?'.$query
-                : url('/api/auth/reset-password?'.$query);
-        });
-
-        // Laravel's stock verification email says nothing about expiry. State
-        // it, and derive the wording from the config so the two cannot drift
-        // apart if the window is ever changed.
-        VerifyEmail::toMailUsing(function (object $notifiable, string $url) {
-            $minutes = (int) config('auth.verification.expire', 60);
-
-            // Built by hand rather than with Str::plural()'s count-prefix
-            // mode, which routes through Number::format and hard-requires the
-            // intl extension — not loaded on the XAMPP PHP this runs on.
-            $window = $minutes % 60 === 0
-                ? ($hours = intdiv($minutes, 60)).' '.Str::plural('hour', $hours)
-                : $minutes.' '.Str::plural('minute', $minutes);
-
-            return (new MailMessage)
-                ->subject('Verify Email Address')
-                ->line('Please click the button below to verify your email address.')
-                ->action('Verify Email Address', $url)
-                ->line("This verification link will expire in {$window}.")
-                ->line('If you did not create an account, no further action is required.');
-        });
-
-        VerifyEmail::createUrlUsing(function (object $notifiable) use ($frontend) {
-            // Always a signed URL — the route rejects anything tampered with
-            // or past its expiry.
-            $signed = URL::temporarySignedRoute(
-                'verification.verify',
-                now()->addMinutes((int) config('auth.verification.expire', 60)),
-                [
-                    'id' => $notifiable->getKey(),
-                    'hash' => sha1($notifiable->getEmailForVerification()),
-                ]
-            );
-
-            if (! $frontend) {
-                return $signed;
-            }
-
-            // Hand the signed URL to the frontend intact so it can forward the
-            // call to the API after showing the user something friendlier.
-            return $frontend.'/verify-email?'.http_build_query(['url' => $signed]);
-        });
-    }
-
     private function configureRateLimiters(): void
     {
         // Note: login is deliberately NOT limited here. Throttle middleware
@@ -134,24 +64,11 @@ class AppServiceProvider extends ServiceProvider
                 ));
         });
 
-        // Caps outbound reset mail so the endpoint cannot be used to flood a
-        // third party's inbox. Keyed on email + IP like the login limiter.
-        RateLimiter::for('password-email', function (Request $request) {
-            $key = mb_strtolower((string) $request->input('email')).'|'.$request->ip();
-
-            return Limit::perHour(6)
-                ->by($key)
-                ->response(fn () => ApiResponse::error(
-                    'TOO_MANY_ATTEMPTS',
-                    'Too many attempts. Please try again later.',
-                    429
-                ));
-        });
-
-        // Changing your own password. Keyed on the authenticated user, not
-        // on email+IP like the reset limiters: the request carries no email,
-        // and the caller is already identified by their token. Caps brute
-        // forcing of current_password from a stolen device.
+        // Changing your own password — the only password route left now
+        // that there is no emailed reset. Keyed on the authenticated user
+        // rather than email+IP: the request carries no email, and the
+        // caller is already identified by their token. Caps brute forcing
+        // of current_password from a stolen device.
         RateLimiter::for('change-password', function (Request $request) {
             return Limit::perHour(6)
                 ->by((string) ($request->user()?->getKey() ?? $request->ip()))
@@ -171,19 +88,6 @@ class AppServiceProvider extends ServiceProvider
                 ->response(fn () => ApiResponse::error(
                     'TOO_MANY_ATTEMPTS',
                     'Too many requests. Please try again shortly.',
-                    429
-                ));
-        });
-
-        // Same reasoning for verification mail.
-        RateLimiter::for('verification', function (Request $request) {
-            $key = mb_strtolower((string) $request->input('email')).'|'.$request->ip();
-
-            return Limit::perHour(6)
-                ->by($key)
-                ->response(fn () => ApiResponse::error(
-                    'TOO_MANY_ATTEMPTS',
-                    'Too many attempts. Please try again later.',
                     429
                 ));
         });

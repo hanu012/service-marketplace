@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/color_res.dart';
 import '../constants/constant.dart';
 import 'base_services.dart';
 import 'base_text.dart';
@@ -131,7 +132,7 @@ class HeroStatTile extends StatelessWidget {
             text: label,
             fontSize: 10.5,
             fontWeight: FontWeight.w500,
-            color: const Color(0xFFE4DBFF),
+            color: const Color(0xFFCCFBF1),
             textAlign: TextAlign.start,
             maxLines: 2,
           ),
@@ -203,8 +204,8 @@ class InitialsAvatar extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: active
-                    ? const [ServiceTokens.purpleBright, Color(0xFF6D28D9)]
-                    : const [Color(0xFF3A3355), Color(0xFF26223A)],
+                    ? const [ServiceTokens.accentBright, ServiceTokens.accentDeep]
+                    : const [ServiceTokens.stroke, ServiceTokens.stroke2],
               ),
         color: onWhite ? Colors.white : null,
         borderRadius: BorderRadius.circular(radius ?? 14.getSize),
@@ -214,7 +215,7 @@ class InitialsAvatar extends StatelessWidget {
         fontSize: box * 0.37,
         fontWeight: FontWeight.w800,
         color: onWhite
-            ? ServiceTokens.purple
+            ? ServiceTokens.accent
             : (active ? Colors.white : ServiceTokens.muted),
       ),
     );
@@ -263,15 +264,15 @@ class PlanPill extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 9.getSize, vertical: 3.getSize),
       decoration: BoxDecoration(
-        color: ServiceTokens.purpleBright.withValues(alpha: 0.16),
+        color: ServiceTokens.accentBright.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(20.getSize),
-        border: Border.all(color: ServiceTokens.purpleBright.withValues(alpha: 0.30)),
+        border: Border.all(color: ServiceTokens.accentBright.withValues(alpha: 0.30)),
       ),
       child: BaseTextDMSans(
         text: label,
         fontSize: 10,
         fontWeight: FontWeight.w700,
-        color: const Color(0xFFC4B5FD),
+        color: const Color(0xFF99F6E4),
         maxLines: 1,
       ),
     );
@@ -298,7 +299,7 @@ class MiniUsageBar extends StatelessWidget {
                 value: ratios[i],
                 minHeight: 4.getSize,
                 backgroundColor: ServiceTokens.stroke,
-                valueColor: const AlwaysStoppedAnimation<Color>(ServiceTokens.purpleBright),
+                valueColor: const AlwaysStoppedAnimation<Color>(ServiceTokens.accentBright),
               ),
             ),
           ),
@@ -332,7 +333,7 @@ class VendorCardShell extends StatelessWidget {
         borderRadius: BorderRadius.circular(18.getSize),
         border: Border.all(
           color: highlighted
-              ? ServiceTokens.purpleBright.withValues(alpha: 0.35)
+              ? ServiceTokens.accentBright.withValues(alpha: 0.35)
               : ServiceTokens.stroke,
         ),
       ),
@@ -354,7 +355,7 @@ class VendorCardShell extends StatelessWidget {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [ServiceTokens.purpleBright, ServiceTokens.purple],
+                          colors: [ServiceTokens.accentBright, ServiceTokens.accent],
                         ),
                       ),
                     ),
@@ -412,7 +413,7 @@ class SalesmanPanel extends StatelessWidget {
                   text: title,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: ServiceTokens.text,
                   textAlign: TextAlign.start,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -425,7 +426,7 @@ class SalesmanPanel extends StatelessWidget {
                     text: actionLabel!,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: ServiceTokens.purpleBright,
+                    color: ServiceTokens.accentBright,
                   ),
                 ),
             ],
@@ -491,7 +492,7 @@ class UsageRow extends StatelessWidget {
                         fontFamily: FontFamily.dmSans,
                         fontSize: 12.getFontSize,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: ServiceTokens.text,
                       ),
                     ),
                     TextSpan(
@@ -518,7 +519,7 @@ class UsageRow extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation<Color>(
                 empty
                     ? ServiceTokens.stroke2
-                    : (full ? const Color(0xFFFBBF24) : ServiceTokens.purpleBright),
+                    : (full ? const Color(0xFFDC6803) : ServiceTokens.accentBright),
               ),
             ),
           ),
@@ -615,22 +616,22 @@ class SettingsRow extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              ServiceTokens.purpleBright.withValues(alpha: 0.25),
-                              ServiceTokens.purple.withValues(alpha: 0.08),
+                              ServiceTokens.accentBright.withValues(alpha: 0.25),
+                              ServiceTokens.accent.withValues(alpha: 0.08),
                             ],
                           ),
-                    color: danger ? const Color(0xFFF87171).withValues(alpha: 0.12) : null,
+                    color: danger ? ColorRes.errorColor.withValues(alpha: 0.12) : null,
                     borderRadius: BorderRadius.circular(11.getSize),
                     border: Border.all(
                       color: danger
-                          ? const Color(0xFFF87171).withValues(alpha: 0.25)
-                          : ServiceTokens.purpleBright.withValues(alpha: 0.20),
+                          ? ColorRes.errorColor.withValues(alpha: 0.25)
+                          : ServiceTokens.accentBright.withValues(alpha: 0.20),
                     ),
                   ),
                   child: Icon(
                     icon,
                     size: 17.getSize,
-                    color: danger ? const Color(0xFFF87171) : ServiceTokens.purpleBright,
+                    color: danger ? ColorRes.errorColor : ServiceTokens.accentBright,
                   ),
                 ),
                 13.widthSpacer,
@@ -643,7 +644,7 @@ class SettingsRow extends StatelessWidget {
                         text: title,
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: danger ? const Color(0xFFF87171) : ServiceTokens.text,
+                        color: danger ? ColorRes.errorColor : ServiceTokens.text,
                         textAlign: TextAlign.start,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -724,7 +725,7 @@ class SalesmanSwitch extends StatelessWidget {
         padding: EdgeInsets.all(2.getSize),
         alignment: value ? Alignment.centerRight : Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: value ? ServiceTokens.purple : ServiceTokens.stroke2,
+          color: value ? ServiceTokens.accent : ServiceTokens.stroke2,
           borderRadius: BorderRadius.circular(20.getSize),
         ),
         child: Container(
@@ -754,7 +755,7 @@ class SalesmanWideButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const red = Color(0xFFF87171);
+    final red = ColorRes.errorColor;
 
     return Padding(
       padding: EdgeInsets.only(bottom: 11.getSize),

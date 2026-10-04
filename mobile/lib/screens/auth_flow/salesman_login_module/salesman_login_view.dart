@@ -38,7 +38,7 @@ class SalesmanLoginView extends StatelessWidget {
             checked: controller.rememberMe,
             onCheckedChanged: controller.toggleRememberMe,
             actionLabel: StringRes.forgotPassword,
-            onAction: controller.forgotPasswordAPI,
+            onAction: controller.forgotPasswordHelp,
           ),
           // Salesmen arrive with an admin-issued temporary password and are
           // forced to change it, so say so before they wonder why.

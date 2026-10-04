@@ -34,7 +34,8 @@ class CategoryEndpointTest extends TestCase
             ->assertJsonStructure([
                 'data' => [
                     ['id', 'name', 'slug', 'icon_url', 'sort_order',
-                        'subcategories' => [['id', 'category_id', 'name', 'slug', 'icon_url', 'sort_order']]],
+                        'subcategories' => [['id', 'category_id', 'name', 'slug', 'icon_url', 'sort_order',
+                            'service_type', 'is_popular']]],
                 ],
             ]);
     }

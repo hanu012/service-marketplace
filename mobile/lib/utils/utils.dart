@@ -34,20 +34,39 @@ class Utils {
   /// Returns the raw value before the navigator is mounted, because Get.width
   /// is not available then.
   static double getSize(double px) {
-    if (Utils.key.currentState != null) {
-      return px * (Get.width / 414);
+    // The navigator check must come FIRST and stay a separate statement:
+    // Get.width throws outside a running app (it null-checks the view), so
+    // reading it before this guard breaks every widget test that builds a
+    // Base* widget without pumping a GetMaterialApp.
+    if (Utils.key.currentState == null) {
+      return px;
     }
-    return px;
+
+    // Even with a navigator mounted, Get.width is 0 until the platform
+    // reports a surface size, which lands after the warm-up frame. Scaling
+    // by 0 collapses every sized value — which asserts on params that
+    // require a positive number (IconButton.splashRadius) and silently
+    // disappears everywhere else.
+    final width = Get.width;
+
+    return width > 0 ? px * (width / 414) : px;
   }
 
   /// Font sizes scale more gently than layout so text stays legible on small
   /// screens without overflowing on large ones.
   static double getFontSize(double px) {
-    if (Utils.key.currentState != null) {
-      final scale = (Get.width / 414).clamp(0.85, 1.15);
-      return px * scale;
+    // Same ordering requirement as getSize() above.
+    if (Utils.key.currentState == null) {
+      return px;
     }
-    return px;
+
+    final width = Get.width;
+
+    if (width <= 0) {
+      return px;
+    }
+
+    return px * (width / 414).clamp(0.85, 1.15);
   }
 
   /// Blocking progress overlay.
@@ -132,6 +151,20 @@ class Utils {
     final parts = fixed.split('.');
 
     return '₹${_withThousandsSeparators(parts[0])}.${parts[1]}';
+  }
+
+  /// Paise → "₹2,499", dropping a zero paise part.
+  ///
+  /// Plan prices are whole rupees in practice and the headline figure on a
+  /// pricing card reads better without a permanent ".00" hanging off it.
+  /// A price that genuinely has paise still shows them rather than being
+  /// silently rounded — a wrong price is worse than an untidy one.
+  static String rupeesWhole(int paise) {
+    if (paise % 100 != 0) {
+      return rupees(paise);
+    }
+
+    return '₹${_withThousandsSeparators((paise ~/ 100).toString())}';
   }
 
   /// Paise → "₹12k" for a stat tile, where the exact figure matters less

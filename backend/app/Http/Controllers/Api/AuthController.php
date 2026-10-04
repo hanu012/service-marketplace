@@ -8,7 +8,6 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Customer;
-use App\Models\Setting;
 use App\Models\User;
 use App\Models\Vendor;
 use Illuminate\Http\JsonResponse;
@@ -65,33 +64,19 @@ class AuthController extends Controller
             return $user;
         });
 
-        // Local stopgap until real SMTP is wired up: when the
-        // bypass_email_verification setting is on, no email goes out. The
-        // account is still created unverified and still gated at login —
-        // an admin verifies it by hand from the Users list.
-        $bypassVerification = Setting::get('bypass_email_verification', false);
-
-        if (! $bypassVerification) {
-            $user->sendEmailVerificationNotification();
-        }
-
-        // A vendor who must verify before logging in is not handed a token
-        // here — issuing one would let them straight past the very gate
-        // login enforces. Customers are not gated, so they sign straight in.
-        if ($user->requiresEmailVerification()) {
-            return ApiResponse::success([
-                'user' => new UserResource($user),
-                'token' => null,
-                'message' => $bypassVerification
-                    ? 'Your account has been created. An administrator will verify it before you can sign in.'
-                    : 'Please verify your email address before signing in. '
-                        .'A verification link has been sent to you.',
-            ], 201);
-        }
-
+        // A token is issued even though the account is not approved yet,
+        // and that is the point: the app has to be able to sign in far
+        // enough to show the "awaiting verification" screen and to offer a
+        // way out. Withholding it would leave the user at the login screen
+        // with no explanation of why their new account does not work.
+        //
+        // The token is not a loophole — RequireApprovedAccount rejects
+        // every call it can make except logout, reading its own profile,
+        // registering for push, and deleting the account.
         return ApiResponse::success([
             'user' => new UserResource($user),
             'token' => $this->issueToken($user, $request->string('device_name')->toString()),
+            'message' => 'Your account has been created and is awaiting verification by an administrator.',
         ], 201);
     }
 
@@ -137,18 +122,11 @@ class AuthController extends Controller
         // A successful sign-in wipes the slate for this email + IP.
         RateLimiter::clear($throttleKey);
 
-        // SPEC section 3.1 / section 7: a self-registered vendor stays locked
-        // out until the address is confirmed. Checked only after the password
-        // is verified, so it never reveals anything about an account to
-        // someone who does not already hold the credentials.
-        if ($user->requiresEmailVerification()) {
-            return ApiResponse::error(
-                'EMAIL_NOT_VERIFIED',
-                'Please verify your email address before signing in.',
-                403
-            );
-        }
-
+        // No approval check here, deliberately. An unapproved account signs
+        // in and receives a working token so the app can show it the
+        // pending screen; RequireApprovedAccount is what actually holds the
+        // line on every other route. Refusing the token here instead would
+        // put us back to a user who cannot be told why they are stuck.
         return ApiResponse::success([
             'user' => new UserResource($user),
             'token' => $this->issueToken($user, $request->string('device_name')->toString()),

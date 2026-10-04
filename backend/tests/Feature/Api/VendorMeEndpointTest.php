@@ -327,6 +327,11 @@ class VendorMeEndpointTest extends TestCase
             ->assertJsonPath('data.active_subscription.items.categories.0.id', $category->id)
             ->assertJsonPath('data.active_subscription.items.categories.0.name', 'AC Repair')
             ->assertJsonPath('data.active_subscription.items.subcategories.0.name', 'Gas Filling')
+            // The parent id travels with each subcategory: the vendor app's
+            // Services screen groups them under their category heading, and
+            // without this it would have to pull the whole category tree
+            // just to label the groups.
+            ->assertJsonPath('data.active_subscription.items.subcategories.0.category_id', $category->id)
             ->assertJsonPath('data.active_subscription.items.zones.0.name', 'Gota');
     }
 

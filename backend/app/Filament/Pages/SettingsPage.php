@@ -60,7 +60,6 @@ class SettingsPage extends Page implements HasForms
         'grace_period_days',
         'force_update_version',
         'maintenance_mode',
-        'bypass_email_verification',
     ];
 
     public static function canAccess(): bool
@@ -76,7 +75,6 @@ class SettingsPage extends Page implements HasForms
             'grace_period_days' => Setting::get('grace_period_days'),
             'force_update_version' => Setting::get('force_update_version'),
             'maintenance_mode' => Setting::get('maintenance_mode', false),
-            'bypass_email_verification' => Setting::get('bypass_email_verification', false),
         ]);
     }
 
@@ -123,16 +121,6 @@ class SettingsPage extends Page implements HasForms
                             ->helperText('Not enforced by any app yet.'),
                     ])
                     ->columns(2),
-
-                Section::make('Development')
-                    ->description('Local stopgaps until the real integration lands. Keep these off in production.')
-                    ->schema([
-                        Toggle::make('bypass_email_verification')
-                            ->label('Bypass email verification')
-                            ->helperText('When on, self-registration sends no verification email. The '
-                                .'account is still created unverified and still cannot sign in until an '
-                                .'admin verifies it from the Users list.'),
-                    ]),
             ])
             ->statePath('data');
     }

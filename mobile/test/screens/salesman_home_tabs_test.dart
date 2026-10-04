@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:service_marketplace/common_model/common_response.dart';
+import 'package:service_marketplace/constants/constant.dart';
 import 'package:service_marketplace/network/data_source.dart';
 import 'package:service_marketplace/screens/auth_flow/earnings_module/earnings_controller.dart';
 import 'package:service_marketplace/screens/auth_flow/earnings_module/earnings_view.dart';
 import 'package:service_marketplace/screens/auth_flow/my_vendors_module/my_vendors_controller.dart';
 import 'package:service_marketplace/screens/auth_flow/my_vendors_module/my_vendors_view.dart';
 import 'package:service_marketplace/screens/auth_flow/salesman_home_module/salesman_home_view.dart';
+import 'package:service_marketplace/screens/auth_flow/salesman_vendor_detail_module/salesman_vendor_detail_view.dart';
+import 'package:service_marketplace/screens/vendor_flow/select_plan_module/select_plan_view.dart';
 import 'package:service_marketplace/screens/vendor_flow/add_vendor_module/add_vendor_view.dart';
 
 /// GET /api/salesmen/me/vendors and GET /api/salesmen/me/commissions
@@ -73,6 +76,38 @@ class _RecordingSalesmanDataSource extends DataSource {
           },
       'error': null,
     });
+  }
+
+  int? capturedShowVendorId;
+
+  /// Resuming a draft re-reads the vendor, because the list payload has no
+  /// login email and the plan screen has to pass one on to Subscribe.
+  @override
+  Future<CommonResponse?> vendorShowAPI({required int vendorId}) async {
+    capturedShowVendorId = vendorId;
+
+    return CommonResponse.fromJson({
+      'success': true,
+      'data': {
+        'vendor': {
+          'id': vendorId,
+          'business_name': 'Still Draft',
+          'owner_name': 'Asha Patel',
+          'email': 'asha@example.com',
+          'phone': '9812345678',
+          'status': 'draft',
+        },
+        'active_subscription': null,
+      },
+      'error': null,
+    });
+  }
+
+  /// SelectPlanView fetches these on init; stubbed empty so the resumed
+  /// screen settles instead of reaching real Dio.
+  @override
+  Future<CommonResponse?> plansAPI() async {
+    return CommonResponse.fromJson({'success': true, 'data': [], 'error': null});
   }
 }
 
@@ -174,6 +209,64 @@ void main() {
       },
     );
 
+    /// A draft is an unfinished sale. Tapping it used to open the
+    /// read-only detail screen, which left the salesman with no way to
+    /// carry on — so it now re-enters the onboarding at plan selection,
+    /// the first step the draft has not completed.
+    testWidgets('tapping a draft resumes the onboarding at plan selection', (
+      tester,
+    ) async {
+      final fake = _RecordingSalesmanDataSource()
+        ..vendorRows = [
+          {
+            'id': 7,
+            'business_name': 'Still Draft',
+            'status': 'draft',
+            'plan_name': null,
+            'days_to_expiry': null,
+          },
+        ];
+      DataSource.instance = fake;
+
+      await tester.pumpWidget(const GetMaterialApp(home: MyVendorsView()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Still Draft'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(SelectPlanView), findsOneWidget);
+      expect(find.byType(SalesmanVendorDetailView), findsNothing);
+      expect(fake.capturedShowVendorId, 7);
+    });
+
+    /// The other half of the branch. An expired vendor also shows "Not
+    /// subscribed", so routing on that would have sent finished vendors
+    /// into the onboarding too — the branch is on status, not on quota.
+    testWidgets('tapping a non-draft vendor still opens the detail screen', (
+      tester,
+    ) async {
+      DataSource.instance = _RecordingSalesmanDataSource()
+        ..vendorRows = [
+          {
+            'id': 9,
+            'business_name': 'Lapsed Vendor',
+            'status': 'expired',
+            'plan_name': 'Gold',
+            'days_to_expiry': -4,
+          },
+        ];
+
+      await tester.pumpWidget(const GetMaterialApp(home: MyVendorsView()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Lapsed Vendor'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SalesmanVendorDetailView), findsOneWidget);
+      expect(find.byType(SelectPlanView), findsNothing);
+    });
+
     testWidgets(
       'the empty-state Add vendor button navigates to AddVendorView',
       (tester) async {
@@ -210,6 +303,29 @@ void main() {
         expect(find.byType(AddVendorView), findsOneWidget);
       },
     );
+
+    /// Earnings is currently hidden across the salesman app
+    /// (Constants.showSalesmanEarnings). Written to follow the flag rather
+    /// than hardcode "absent", so flipping it back on does not leave a
+    /// test asserting the opposite of what the app now does.
+    testWidgets('the Earnings tab and stat tile follow the earnings flag', (
+      tester,
+    ) async {
+      DataSource.instance = _RecordingSalesmanDataSource();
+
+      await tester.pumpWidget(const GetMaterialApp(home: SalesmanHomeView()));
+      await tester.pumpAndSettle();
+
+      final matcher = Constants.showSalesmanEarnings ? findsOneWidget : findsNothing;
+
+      expect(find.text('earningsTab'), matcher);
+      expect(find.text('earningsLabel'), matcher);
+
+      // My Vendors is never hidden, so a bare "findsNothing" above passing
+      // because the screen failed to build would still be caught here.
+      expect(find.text('myVendorsTab'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('EarningsController', () {

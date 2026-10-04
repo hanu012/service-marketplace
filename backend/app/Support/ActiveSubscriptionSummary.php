@@ -88,7 +88,16 @@ class ActiveSubscriptionSummary
             // stance.
             'items' => [
                 'categories' => self::namedItems(Category::class, $itemIdsByType['category'] ?? []),
-                'subcategories' => self::namedItems(Subcategory::class, $itemIdsByType['subcategory'] ?? []),
+                // Subcategories also carry their parent id: the vendor
+                // app's Services screen lists them grouped under the
+                // category they belong to, and without this the app would
+                // have to fetch the whole category tree just to work out
+                // which heading each name belongs under.
+                'subcategories' => self::namedItems(
+                    Subcategory::class,
+                    $itemIdsByType['subcategory'] ?? [],
+                    ['category_id'],
+                ),
                 'zones' => self::namedItems(Zone::class, $itemIdsByType['zone'] ?? []),
             ],
         ];
@@ -97,10 +106,15 @@ class ActiveSubscriptionSummary
     /**
      * @param  class-string  $modelClass
      * @param  array<int, int>  $ids
+     * @param  array<int, string>  $extraColumns  Additional columns to select
+     *                                            and pass through verbatim.
      * @return array<int, array<string, mixed>>
      */
-    private static function namedItems(string $modelClass, array $ids): array
-    {
+    private static function namedItems(
+        string $modelClass,
+        array $ids,
+        array $extraColumns = [],
+    ): array {
         if ($ids === []) {
             return [];
         }
@@ -108,8 +122,16 @@ class ActiveSubscriptionSummary
         return $modelClass::query()
             ->whereIn('id', $ids)
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn ($model) => ['id' => $model->id, 'name' => $model->name])
+            ->get(array_merge(['id', 'name'], $extraColumns))
+            ->map(function ($model) use ($extraColumns) {
+                $item = ['id' => $model->id, 'name' => $model->name];
+
+                foreach ($extraColumns as $column) {
+                    $item[$column] = $model->{$column};
+                }
+
+                return $item;
+            })
             ->all();
     }
 

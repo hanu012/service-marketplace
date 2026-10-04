@@ -2,7 +2,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../constants/app.export.dart';
-import '../../auth_flow/salesman_home_module/salesman_home_view.dart';
 
 /// Add Vendor, final step — the vendor is now Active. Shows the temp
 /// credentials Subscribe just generated (shown once, per SPEC section 2.2)
@@ -40,7 +39,22 @@ class SubscriptionConfirmationController extends GetxController {
     }
   }
 
+  /// Unwinds the Add Vendor flow back to the home screen it started from.
+  ///
+  /// Deliberately NOT Get.offAll(SalesmanHomeView()): home is still mounted
+  /// at the root of this stack, and replacing it builds a SECOND one while
+  /// the first is alive. The new MyVendorsView's GetBuilder then reuses the
+  /// already-registered MyVendorsController rather than creating its own,
+  /// and tearing the old route down disposes that shared controller —
+  /// taking the search field's TextEditingController with it, under a
+  /// screen that is now rendering it ("A TextEditingController was used
+  /// after being disposed").
+  ///
+  /// Popping to the root keeps the original home, and its controllers,
+  /// exactly as they were. MyVendorsController.resumeDraftAPI and
+  /// SalesmanHomeView.addVendor both refresh the list when the flow
+  /// returns, so the newly-sold vendor still appears.
   void done() {
-    Utils.transitionWithOffAll(const SalesmanHomeView());
+    Get.until((route) => route.isFirst);
   }
 }

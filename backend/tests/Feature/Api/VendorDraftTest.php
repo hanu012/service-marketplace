@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Enums\ApprovalStatus;
 use App\Enums\UserRole;
 use App\Models\Salesman;
 use App\Models\User;
@@ -77,8 +78,11 @@ class VendorDraftTest extends TestCase
         $user = User::where('email', 'bhavin@example.com')->sole();
 
         $this->assertSame(UserRole::Vendor, $user->role);
-        // Met in person, so no address to confirm.
-        $this->assertTrue($user->hasVerifiedEmail());
+        // Met in person by a salesman, who is a vetted account themselves —
+        // so the vendor skips the admin's pending queue rather than sitting
+        // in it behind a visit that already happened.
+        $this->assertTrue($user->isApproved());
+        $this->assertSame(ApprovalStatus::Approved, $user->approval_status);
         // Whatever password they are eventually given, they did not choose it.
         $this->assertTrue($user->must_change_password);
         $this->assertNotNull($user->vendor);

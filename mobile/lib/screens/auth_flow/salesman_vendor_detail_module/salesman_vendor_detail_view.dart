@@ -36,7 +36,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
   Widget body(SalesmanVendorDetailController controller) {
     if (controller.isLoading && controller.vendor == null) {
       return const Center(
-        child: CupertinoActivityIndicator(color: ServiceTokens.purpleBright),
+        child: CupertinoActivityIndicator(color: ServiceTokens.accentBright),
       );
     }
 
@@ -50,7 +50,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: controller.fetchVendorAPI,
-      color: ServiceTokens.purple,
+      color: ServiceTokens.accent,
       backgroundColor: ServiceTokens.card,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -119,7 +119,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
             BaseRaisedButton(
               onPressed: controller.fetchVendorAPI,
               buttonText: StringRes.retry,
-              buttonColor: ServiceTokens.purple,
+              buttonColor: ServiceTokens.accent,
             ),
           ],
         ),
@@ -284,7 +284,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
               Icon(
                 icon,
                 size: 18.getSize,
-                color: enabled ? ServiceTokens.purpleBright : ServiceTokens.muted2,
+                color: enabled ? ServiceTokens.accentBright : ServiceTokens.muted2,
               ),
               5.heightSpacer,
               BaseTextDMSans(
@@ -350,12 +350,12 @@ class SalesmanVendorDetailView extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            ServiceTokens.purpleBright.withValues(alpha: 0.22),
-            ServiceTokens.purple.withValues(alpha: 0.06),
+            ServiceTokens.accentBright.withValues(alpha: 0.22),
+            ServiceTokens.accent.withValues(alpha: 0.06),
           ],
         ),
         borderRadius: BorderRadius.circular(18.getSize),
-        border: Border.all(color: ServiceTokens.purpleBright.withValues(alpha: 0.30)),
+        border: Border.all(color: ServiceTokens.accentBright.withValues(alpha: 0.30)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,7 +385,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
                       text: days < 0 ? '${-days}' : '$days',
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: days < 0 ? const Color(0xFFF87171) : Colors.white,
+                      color: days < 0 ? ColorRes.errorColor : Colors.white,
                     ),
                     BaseTextDMSans(
                       text: days < 0
@@ -393,7 +393,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
                           : tr(StringRes.daysLeft),
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFFC4B5FD),
+                      color: const Color(0xFF99F6E4),
                     ),
                   ],
                 ),
@@ -409,7 +409,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
             ].join(' · '),
             fontSize: 11.5,
             fontWeight: FontWeight.w500,
-            color: const Color(0xFFC4B5FD),
+            color: const Color(0xFF99F6E4),
             textAlign: TextAlign.start,
             maxLines: 2,
           ),
@@ -482,12 +482,12 @@ class SalesmanVendorDetailView extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 13.getSize, vertical: 8.getSize),
       decoration: BoxDecoration(
         color: zoneStyle
-            ? ServiceTokens.purpleBright.withValues(alpha: 0.12)
+            ? ServiceTokens.accentBright.withValues(alpha: 0.12)
             : ServiceTokens.card2,
         borderRadius: BorderRadius.circular(10.getSize),
         border: Border.all(
           color: zoneStyle
-              ? ServiceTokens.purpleBright.withValues(alpha: 0.25)
+              ? ServiceTokens.accentBright.withValues(alpha: 0.25)
               : ServiceTokens.stroke2,
         ),
       ),
@@ -495,7 +495,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
         text: label,
         fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: zoneStyle ? const Color(0xFFC4B5FD) : ServiceTokens.text,
+        color: zoneStyle ? ServiceTokens.accent : ServiceTokens.text,
       ),
     );
   }

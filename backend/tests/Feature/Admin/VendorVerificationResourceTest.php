@@ -109,6 +109,48 @@ class VendorVerificationResourceTest extends TestCase
         $this->assertSame($this->admin->id, $reloaded->verified_by);
     }
 
+    /**
+     * The approve/reject decision is made on this page, so the documents
+     * being decided on have to be visible. The ID proof used to render as
+     * a text link reading only "Aadhaar".
+     */
+    public function test_the_view_page_shows_both_kyc_documents_full_size(): void
+    {
+        $vendor = $this->vendor();
+
+        $vendor->forceFill([
+            'disk' => 'public',
+            'shop_photo_path' => 'vendor-kyc/'.$vendor->id.'/shop.jpg',
+            'id_proof_path' => 'vendor-kyc/'.$vendor->id.'/id.jpg',
+            'id_proof_type' => 'aadhaar',
+        ])->save();
+
+        Livewire::test(ViewVendorVerification::class, ['record' => $vendor->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Shop photo')
+            ->assertSee('ID proof')
+            // Each links to the original, not just the thumbnail.
+            ->assertSee($vendor->fileUrl($vendor->shop_photo_path), escape: false)
+            ->assertSee($vendor->fileUrl($vendor->id_proof_path), escape: false);
+    }
+
+    /**
+     * A vendor can reach this queue with nothing uploaded, so neither
+     * entry may hard-fail on a null path.
+     */
+    public function test_the_view_page_renders_when_no_kyc_was_uploaded(): void
+    {
+        $vendor = $this->vendor('pending_verification', [
+            'shop_photo_path' => null,
+            'id_proof_path' => null,
+            'id_proof_type' => null,
+        ]);
+
+        Livewire::test(ViewVendorVerification::class, ['record' => $vendor->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Not provided');
+    }
+
     public function test_the_view_page_offers_the_same_approve_and_reject_actions(): void
     {
         $vendor = $this->vendor();

@@ -14,6 +14,7 @@ use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Illuminate\Validation\Rules\Unique;
 use Filament\Resources\Resource;
+use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -195,6 +196,22 @@ class ZoneResource extends Resource
                     ->label('In use')
                     ->state(fn (Zone $record): int => $record->countSubscriptionReferences())
                     ->badge()
+                    // Tapping the badge answers the question it raises:
+                    // "in use by whom?". Only offered where there is
+                    // something to show — a modal reading "nothing here"
+                    // is a worse answer than an unclickable badge.
+                    ->action(
+                        TableAction::make('viewSubscribers')
+                            ->label('Subscribing vendors')
+                            ->modalHeading(fn (Zone $record): string => "Subscriptions covering {$record->name}")
+                            ->modalContent(fn (Zone $record) => view(
+                                'filament.zones.subscribers',
+                                ['zone' => $record],
+                            ))
+                            ->modalSubmitAction(false)
+                            ->modalCancelActionLabel('Close')
+                            ->visible(fn (Zone $record): bool => $record->countSubscriptionReferences() > 0)
+                    )
                     ->color(fn (int $state): string => $state > 0 ? 'warning' : 'gray')
                     ->formatStateUsing(fn (int $state): string => $state === 0
                         ? 'Not used'

@@ -72,10 +72,25 @@ dependencies:
   # Launch Checklist for why, and the size-cap fallback used instead.
   flutter_image_compress: ^2.3.0
 
+  # Plays a portfolio video in the full-screen preview (SPEC section 3
+  # item 5). The preview previously showed a play icon over a dead
+  # rectangle; the platform's own player is what makes the uploaded clip
+  # actually watchable. Playback only — no transcoding, which is still
+  # the open item in PROGRESS.md's Before Launch Checklist.
+  video_player: ^2.9.2
+
   # Opens the phone dialer / WhatsApp intent from the vendor detail
   # screen's Call/WhatsApp buttons (SPEC section 4 items 6-7, task 5.4) —
   # only ever called after the lead write is confirmed, never before.
   url_launcher: ^6.3.0
+
+  # Poster frame for a video tile in the portfolio grid. Without one a
+  # video reads as an empty box with a play icon, indistinguishable from
+  # every other video the vendor uploaded. Decoded on the device because
+  # nothing generates a poster server-side at upload time.
+  video_thumbnail: ^0.5.6
+  google_maps_flutter: ^2.18.1
+  geocoding: ^5.0.0
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ApprovalStatus;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\User;
@@ -24,7 +25,7 @@ class AdminUserSeeder extends Seeder
     {
         $email = env('ADMIN_EMAIL', 'admin@servicemarketplace.local');
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => $email],
             [
                 'name' => env('ADMIN_NAME', 'Administrator'),
@@ -39,12 +40,24 @@ class AdminUserSeeder extends Seeder
                 // fresh `migrate:fresh --seed` creates this row *after* that
                 // migration has run, so the backfill never sees it.
                 'permissions' => [Permission::WILDCARD],
-
-                // Admins are created deliberately, not self-registered, so
-                // there is no address to confirm.
-                'email_verified_at' => now(),
             ]
         );
+
+        // forceFill, not part of the array above: none of these three are in
+        // User::$fillable, and mass assignment drops unfillable keys in
+        // silence rather than erroring. Passed to updateOrCreate they would
+        // simply never be written, leaving the bootstrap admin Pending — and
+        // so locked out of the only panel that can approve anything.
+        $user->forceFill([
+            // Admins are created deliberately, not self-registered, so there
+            // is no address to confirm.
+            'email_verified_at' => $user->email_verified_at ?? now(),
+
+            // Approved outright (SPEC section 3.1). There is nobody above
+            // this account to approve it.
+            'approval_status' => ApprovalStatus::Approved,
+            'approval_decided_at' => $user->approval_decided_at ?? now(),
+        ])->save();
 
         $this->command?->info("Admin ready: {$email}");
     }

@@ -16,6 +16,14 @@ class PrefKeys {
   /// especially unwise.
   static const String rememberedEmail = 'rememberedEmail';
 
+  /// The customer's chosen location (SPEC section 4.2). Persisted so the
+  /// home header is correct on a cold start, and so a deliberate choice is
+  /// not overwritten by the next GPS fix.
+  static const String customerLocationLabel = 'customerLocationLabel';
+  static const String customerLocationAddress = 'customerLocationAddress';
+  static const String customerLatitude = 'customerLatitude';
+  static const String customerLongitude = 'customerLongitude';
+
   /// In-progress vendor draft (SPEC 2.2). Kept so a salesman who loses the
   /// connection - or the app - resumes rather than retyping.
   static const String draftVendorId = 'draftVendorId';

@@ -19,7 +19,10 @@ approvals.
 - Queue: Laravel Queue (database driver is fine at this scale) +
   Laravel Scheduler for the daily expiry job
 - Push: Firebase Cloud Messaging via HTTP v1 API
-- Email: Laravel Mail + Resend
+- Email: **none**. The platform sends no outbound mail at all — see
+  "Account approval" below. `MAIL_MAILER` stays at `log` and nothing
+  calls Mail; do not add a mailer, a notification's `mail` channel, or
+  Resend back without that being an explicit decision.
 
 ## Architecture — Laravel backend
 No restriction here on repositories, interfaces, or DTOs — use standard
@@ -61,8 +64,10 @@ this backend.
 - Subscription-creating endpoints require an `Idempotency-Key` header,
   enforced with a unique column
 - Soft deletes (`SoftDeletes` trait) on: users, vendors, subscriptions
-- Password reset tokens expire in 15 minutes, single use
-- Email verification links expire in 24 hours
+- No password-reset or email-verification endpoints exist. A forgotten
+  password is recovered by an admin issuing a new temporary password from
+  the Users list (sets `must_change_password`); `auth/change-password` is
+  the only password route.
 - Widening an existing enum column (adding a new status value) needs a
   raw `DB::statement("ALTER TABLE ... MODIFY ... ENUM(...)")` migration
   — Laravel's `->change()` isn't reliably supported on enum columns via
@@ -140,6 +145,21 @@ the old ones, not "improve" on the pattern.
   around the call. Parse the response with `Model.fromJson()`, persist via
   `Injector.setUserData(...)` when relevant, navigate with
   `Utils.transitionWithOffAll(NextScreen())`.
+- **Never `transitionWithOffAll` / `Get.offAll` to a screen that is still
+  mounted lower in the stack.** Use `Get.back()` or
+  `Get.until((r) => r.isFirst)` to unwind to it instead. This has caused
+  the same crash twice — "A TextEditingController was used after being
+  disposed", surfacing as a red box inside the My Vendors tab.
+  `GetBuilder(init: X())` reuses an already-registered controller rather
+  than creating its own, so the rebuilt screen shares the live one's
+  controller; the outgoing route is its creator, and GetBuilder's
+  `autoRemove` then deletes it on the way out, disposing a
+  `TextEditingController` the new screen is mid-render on. Removing the
+  explicit `dispose:` callback does NOT fix this — the creator's own
+  auto-removal still fires. Only not building the duplicate does.
+  Offenders so far: finishing a profile-initiated password change, and
+  `SubscriptionConfirmationController.done()`. `offAll` remains correct
+  where the destination is genuinely absent (login → home, logout → login).
 - **View** (`<name>_view.dart`): a `StatelessWidget`. `build()` returns
   `GetBuilder<XController>(init: XController(), dispose: (_) =>
   Get.delete<XController>(), builder: (controller) => Scaffold(...))`.
@@ -170,37 +190,96 @@ the old ones, not "improve" on the pattern.
   the existing files.
 
 ## Theme
-Dark by default, user-switchable (not forced).
+**Light, teal, and the same family across both products.** The apps used
+to be a dark violet scheme and the admin panel teal; that split is over.
+A brand change now moves one direction, not two.
 
-**The two products currently use different accents.** This is a known,
-unresolved divergence — not an accident to be "fixed" by whichever file
-you happen to be editing. Pick a direction deliberately before changing
-either side.
+**Flutter apps — light canvas, deep teal accent:**
+- Primary accent: teal-700 `#0F766E`
+- Bright accent: teal-500 `#14B8A6`
+- Page background: `#F6F7F9` — deliberately not pure white
+- Cards / nav bar: `#FFFFFF`
+- Border: `#E4E7EC`
+- Primary text: `#101828`; muted text: `#5B6475`
+- Inactive nav: `#667085`; chevrons and placeholder glyphs: `#98A2B3`
+- Accent tile fill `rgba(15,118,110,0.10)`, border `rgba(15,118,110,0.20)`
+- Header gradient: `#0E8F83` → `#0F766E` → `#134E4A`
+- Card shadow `0 8px 24px rgba(16,24,40,0.08)`; search bar
+  `0 12px 30px rgba(16,24,40,0.14)`
+
+There are **two** palette files and they must agree:
+`mobile/lib/constants/color_res.dart` (`ColorRes`, used by the auth and
+older screens) and `mobile/lib/widgets/base_services.dart`
+(`ServiceTokens`, used by every redesigned screen across all three
+flavours). `widget_test.dart` asserts both, and asserts they match each
+other, so they move together or the suite fails.
 
 **Filament admin — teal.** Verified values from the panel:
 - Primary accent: teal-400 `#2dd4bf`
 - Surface: slate-900 `#0f172a`
-- Page background: slate-950 `#020617` — deliberately not pure black
-Teal specifically avoids colliding with Filament's reserved red/amber for
+- Page background: slate-950 `#020617`
+The admin stays dark; only the accent family is shared. Teal specifically
+avoids colliding with Filament's reserved red/amber for
 destructive/warning states — don't "simplify" to amber later, it breaks
 status legibility. No custom Tailwind build for the admin — Filament's
 panel-provider color config is sufficient, no npm build step needed.
 
-**Flutter apps — violet**, adopted from the auth reference design:
-- Primary accent: violet-500 `#8b5cf6`
-- Surface: `#16102e`
-- Page background: `#0b0716` — likewise not pure black
-Values live in `mobile/lib/constants/color_res.dart`, which is the single
-source of truth for the apps; `widget_test.dart` asserts them against this
-list, so the two move together or the suite fails.
+Contrast rules that are load-bearing in the light palette, and that
+invert what the old dark one required:
+- Button labels are **white on teal-700** (5.4:1). Body text is dark ink
+  on white, not the other way round — a hardcoded `Colors.white` on a
+  card is now invisible, which is the single most common way to break
+  this theme.
+- `Colors.white` is still correct **inside the header gradient**, the one
+  dark surface left. That is the distinction to check before changing any
+  white: which surface is it actually sitting on?
+- teal-500 is decorative only — 2.3:1 against white both as a fill behind
+  white text and as text on a card. Anything that must be read uses
+  teal-700.
+- Success is `#12B76A`, kept clear of the accent so "approved" does not
+  read as just another branded element. Error `#D92D20`, warning
+  `#DC6803` — the lighter dark-theme variants fail on white.
 
-Contrast rules that are load-bearing in the violet palette, verified by
-calculation rather than by eye:
-- Button labels are **white**, not dark ink (4.2:1 on violet-500).
-- Button gradients run violet-500 → violet-700. Never start one at
-  violet-400: white on it is 2.7:1 and fails AA.
-- Body-sized links use violet-400 (7.0:1 on the canvas). Violet-500 is
-  4.4:1 there, which misses AA for text under 18pt.
+## Account approval — the single gate
+Admin approval replaced email verification entirely. `users.approval_status`
+(`pending` | `approved` | `rejected`, `App\Enums\ApprovalStatus`) is the
+only thing deciding whether an account can use the product, and it applies
+to **all** self-registered roles — not vendors only, the way the email
+check did.
+
+The shape is deliberate and reads backwards at first glance:
+
+- Registration and login **both issue a working token** even when the
+  account is unapproved. That is required, not an oversight — the app has
+  to sign in far enough to show "Your account is in verification" and to
+  offer a way out. Withholding the token leaves the user at a login screen
+  with no explanation.
+- The restriction lives in `RequireApprovedAccount`, appended to the whole
+  `api` group (like `RequirePasswordChange`), not tagged per route. Four
+  things stay reachable while unapproved: `POST auth/logout`,
+  `GET /user`, device-token register/delete, and `DELETE /user`. The
+  allowlist matches on **method and path** — a bare `api/user` entry would
+  silently open `api/user/preferences` too.
+- Error codes are distinct per state: `ACCOUNT_PENDING_APPROVAL` and
+  `ACCOUNT_REJECTED` (the latter returns the admin's `approval_note` as the
+  message), so the app routes to the right screen instead of guessing from
+  a generic 403.
+- Order matters: `RequirePasswordChange` runs **before**
+  `RequireApprovedAccount`, and the Flutter controllers branch in the same
+  order. A user with both problems must be sent to change-password first,
+  or they land on a pending screen whose own calls the password gate then
+  refuses.
+
+Accounts created by an admin (Filament) or by a salesman
+(`VendorDraftService`) are approved at creation — that person is the
+vetting. `approval_status` is **not** in `User::$fillable`: set it via
+`User::recordApprovalDecision()` or an explicit `forceFill`, never through
+mass assignment, which drops unfillable keys in silence.
+
+`User` also carries `protected $attributes` defaulting `approval_status` to
+pending. The column default alone is not enough — it is applied by the
+INSERT and never read back, so the model returned straight out of
+`User::create()` would have a null status.
 
 ## Roles
 admin | salesman | vendor | customer — enforced with Laravel Policies +

@@ -28,14 +28,12 @@ class DataSource {
   static const String register = 'auth/register';
   static const String login = 'auth/login';
   static const String logout = 'auth/logout';
-  static const String forgotPassword = 'auth/forgot-password';
-  static const String resetPassword = 'auth/reset-password';
-  static const String resendVerification = 'auth/resend-verification';
   static const String changePassword = 'auth/change-password';
   static const String user = 'user';
   static const String vendors = 'vendors';
   static const String vendorDraft = 'vendors/draft';
   static const String categories = 'categories';
+  static const String serviceSearch = 'services/search';
   static const String plans = 'plans';
   static const String zones = 'zones';
   static const String subscriptions = 'subscriptions';
@@ -90,21 +88,16 @@ class DataSource {
 
   Future<CommonResponse?> logoutAPI() => _post(logout, {});
 
-  /// Changing your own password while signed in. Distinct from the emailed
-  /// reset flow: a salesman on first login has the temporary password an
-  /// admin gave them, not a reset token.
+  /// Changing your own password while signed in — the only password route
+  /// there is. There is no emailed reset: the platform sends no mail, and a
+  /// forgotten password is replaced by an admin issuing a new temporary one
+  /// from the panel, which lands the user here on next sign-in.
   Future<CommonResponse?> changePasswordAPI({required Map<String, dynamic> body}) =>
       _post(changePassword, body);
 
-  Future<CommonResponse?> forgotPasswordAPI({required Map<String, dynamic> body}) =>
-      _post(forgotPassword, body);
-
-  Future<CommonResponse?> resetPasswordAPI({required Map<String, dynamic> body}) =>
-      _post(resetPassword, body);
-
-  Future<CommonResponse?> resendVerificationAPI({required Map<String, dynamic> body}) =>
-      _post(resendVerification, body);
-
+  /// The signed-in user's own profile. Also how the account-verification
+  /// screen finds out an admin has made a decision — it is one of the few
+  /// routes an unapproved account may still call.
   Future<CommonResponse?> userAPI() => _get(user);
 
   // ── Vendors (salesman add-vendor flow, SPEC 2.2) ─────────────────────────
@@ -121,6 +114,11 @@ class DataSource {
   /// The vendor's own record (SPEC section 3.2) — checked on login to
   /// decide dashboard vs plan-selection, per has_active_subscription.
   Future<CommonResponse?> vendorMeAPI() => _get(vendorMe);
+
+  /// The vendor editing their own business profile (SPEC section 3.2).
+  /// No id in the body — the server resolves the vendor from the token.
+  Future<CommonResponse?> updateVendorMeAPI({required Map<String, dynamic> body}) =>
+      _patch(vendorMe, body);
 
   /// Adding categories/subcategories/zones to the caller's own active
   /// subscription, within whatever quota is still unused (SPEC section
@@ -142,6 +140,7 @@ class DataSource {
     required String type,
     required int subcategoryId,
     required String filePath,
+    ProgressCallback? onSendProgress,
   }) async {
     final form = FormData.fromMap({
       'type': type,
@@ -149,7 +148,7 @@ class DataSource {
       'file': await MultipartFile.fromFile(filePath),
     });
 
-    return _multipart(vendorMePortfolio, form);
+    return _multipart(vendorMePortfolio, form, onSendProgress: onSendProgress);
   }
 
   /// The vendor Leads tab (SPEC section 3 item 7, task 4.8) — every
@@ -202,6 +201,12 @@ class DataSource {
     String? pincode,
     int page = 1,
     int perPage = 15,
+    /// 'nearest' | 'rating' | 'new' — the list screen's sort chips.
+    /// Omitted (null) keeps the server's own default (plan priority,
+    /// then rating, then recency), same behaviour as before these chips
+    /// existed — callers that do not care about sort (the home screen's
+    /// "Vendors near you" rail) are unaffected.
+    String? sort,
   }) =>
       _get(vendorSearch, queryParameters: {
         'subcategory_id': subcategoryId,
@@ -210,6 +215,7 @@ class DataSource {
         'pincode': ?pincode,
         'page': page,
         'per_page': perPage,
+        'sort': ?sort,
       });
 
   /// `latitude`/`longitude` are optional — the response simply omits
@@ -282,6 +288,28 @@ class DataSource {
   /// Unpaginated by design (CLAUDE.md) — the whole tree is needed in one
   /// request to render selection with a live "X of Y selected" counter.
   Future<CommonResponse?> categoriesAPI() => _get(categories);
+
+  /// "X vendors" per subcategory on the subcategories screen. Location is
+  /// optional here, unlike vendorSearchAPI — the screen opens before the
+  /// customer's location has necessarily resolved (SPEC section 4.2's own
+  /// fallback states), and the server just returns every count as zero
+  /// rather than rejecting the request.
+  Future<CommonResponse?> categoryVendorCountsAPI({
+    required int categoryId,
+    double? latitude,
+    double? longitude,
+    String? pincode,
+  }) =>
+      _get('$categories/$categoryId/vendor-counts', queryParameters: {
+        'latitude': ?latitude,
+        'longitude': ?longitude,
+        'pincode': ?pincode,
+      });
+
+  /// Free-text service lookup for the customer search bar. A short
+  /// ranked slice, unlike categoriesAPI's whole-tree master data.
+  Future<CommonResponse?> searchServicesAPI({required String query}) =>
+      _get(serviceSearch, queryParameters: {'q': query});
 
   Future<CommonResponse?> plansAPI() => _get(plans);
 
@@ -365,12 +393,21 @@ class DataSource {
   /// Multipart variant of _post. Dio sets the boundary and content-type
   /// itself for FormData, so the JSON content-type header from BaseOptions is
   /// overridden per request rather than globally.
-  Future<CommonResponse?> _multipart(String path, FormData form) async {
+  ///
+  /// [onSendProgress] reports bytes written as they go out, so a caller
+  /// uploading a video — tens of megabytes over a phone connection — can
+  /// show real progress instead of an indeterminate spinner.
+  Future<CommonResponse?> _multipart(
+    String path,
+    FormData form, {
+    ProgressCallback? onSendProgress,
+  }) async {
     try {
       final response = await _dio.post(
         path,
         data: form,
         options: Options(contentType: 'multipart/form-data'),
+        onSendProgress: onSendProgress,
       );
       return _parse(response);
     } catch (e) {

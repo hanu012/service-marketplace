@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../account_verification_module/account_verification_view.dart';
 import '../change_password_module/change_password_view.dart';
 import '../salesman_home_module/salesman_home_view.dart';
 
@@ -47,34 +48,16 @@ class SalesmanLoginController extends GetxController {
     update();
   }
 
-  /// Sends a reset link to whatever is in the email field.
+  /// Tells the user how to actually get a new password.
   ///
-  /// The response is deliberately identical whether or not the address is
-  /// registered — matching the server, which does the same so this cannot
-  /// be used to discover who has an account.
-  Future<void> forgotPasswordAPI() async {
-    final email = emailController.text.trim();
-
-    if (email.isEmpty || !GetUtils.isEmail(email)) {
-      autoValidateMode = AutovalidateMode.onUserInteraction;
-      update();
-      Utils.showToast(tr(StringRes.enterEmailFirst), isError: true);
-      return;
-    }
-
-    try {
-      Utils.showCircularProgressLottie(true);
-      await DataSource.instance.forgotPasswordAPI(body: {'email': email});
-      Utils.showCircularProgressLottie(false);
-
-      Utils.showToast(tr(StringRes.resetLinkSent));
-    } catch (e) {
-      Utils.showCircularProgressLottie(false);
-      if (kDebugMode) {
-        print('Forgot password error $e');
-      }
-      Utils.showToast(tr(StringRes.somethingWentWrong), isError: true);
-    }
+  /// There is no self-service reset: the platform sends no mail at all, so
+  /// there is nowhere to send a link. An admin issues a fresh temporary
+  /// password from the panel instead, and the user is made to change it on
+  /// next sign-in. Kept as a visible affordance rather than deleted —
+  /// someone who has forgotten their password will look for this, and a
+  /// missing button tells them nothing about what to do next.
+  void forgotPasswordHelp() {
+    Utils.showToast(tr(StringRes.forgotPasswordHelp));
   }
 
   Future<void> loginAPI() async {
@@ -134,6 +117,15 @@ class SalesmanLoginController extends GetxController {
       // the user's sake, not the security boundary.
       if (userModel.mustChangePassword) {
         Utils.transitionWithOffAll(const ChangePasswordView());
+        return;
+      }
+
+      // A salesman is admin-created and so approved from the start, but an
+      // admin can revoke that later from the Users list — in which case
+      // this is the screen they get rather than a home screen whose every
+      // request the server would refuse.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
         return;
       }
 

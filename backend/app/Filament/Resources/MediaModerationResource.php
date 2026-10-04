@@ -44,6 +44,17 @@ class MediaModerationResource extends Resource
 
     protected static ?string $navigationGroup = 'People';
 
+    /**
+     * Hidden from the sidebar: moderation now happens on the Media tab of
+     * the uploading vendor's user page, where the rest of that vendor's
+     * context is. The resource stays registered — its approve/reject
+     * actions are reused verbatim by that tab.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         // Eager loaded explicitly: `mediable` is a morph relation, which

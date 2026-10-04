@@ -2,16 +2,17 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\ApprovalStatus;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\Concerns\RecordsAuditLog;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 use RuntimeException;
 
-class User extends Authenticatable implements FilamentUser, MustVerifyEmailContract
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, RecordsAuditLog, SoftDeletes;
@@ -64,6 +65,30 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
      * user is currently signed in on. `FcmChannel` sends to all of
      * them; there is no "primary device" concept.
      */
+    /**
+     * Portfolio uploads belonging to this user's vendor record.
+     *
+     * Exists so the admin panel can moderate a vendor's media from the
+     * user's own page — Filament relation managers render as tabs there,
+     * and a tab needs a relation hanging off the record the page is for.
+     * Media is a MorphMany on Vendor, so the hop is spelled out by hand
+     * with the morph type pinned; hasManyThrough does not know about
+     * polymorphic second legs on its own.
+     *
+     * @return HasManyThrough<Media, Vendor, $this>
+     */
+    public function portfolioMedia(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            Media::class,
+            Vendor::class,
+            'user_id',
+            'mediable_id',
+            'id',
+            'id',
+        )->where('media.mediable_type', (new Vendor)->getMorphClass());
+    }
+
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);
@@ -80,6 +105,22 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     ];
 
     /**
+     * Defaults applied to a new instance before it is saved.
+     *
+     * The column has the same default, but a database default is only
+     * applied by the INSERT — it is not read back into the in-memory model.
+     * Without this, the User returned straight out of User::create() has a
+     * null approval_status, and anything reading it on that instance (the
+     * API resource serialising the registration response, for one) sees
+     * null rather than Pending.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'approval_status' => ApprovalStatus::Pending->value,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -88,6 +129,8 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     {
         return [
             'email_verified_at' => 'datetime',
+            'approval_status' => ApprovalStatus::class,
+            'approval_decided_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
             'permissions' => 'array',
@@ -269,43 +312,58 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     }
 
     /**
-     * Whether this account must verify its email address before it is allowed
-     * to log in.
+     * Whether an admin has let this account into the product.
      *
-     * SPEC section 3.1 and section 7: a vendor who signed themselves up is
-     * unproven and has to confirm the address. Salesman- and admin-created
-     * accounts were met in person, so they skip this — those flows set
-     * email_verified_at at creation time (Phase 2).
+     * SPEC section 3.1: this is the only gate. It replaced email
+     * verification, which proved an address was reachable but said nothing
+     * about whether the person behind it should be selling on the platform.
      *
-     * Customers are deliberately not gated: SPEC section 4.1 asks only for
-     * email + password self-registration, with no verification requirement.
-     * They still receive the verification email and can verify.
+     * Applies to every self-registered role. Accounts created *by* an admin
+     * or a salesman are approved at creation time — somebody already vetted
+     * them in person — so this returns true for them from the start.
      */
-    public function requiresEmailVerification(): bool
+    public function isApproved(): bool
     {
-        if ($this->role !== UserRole::Vendor) {
-            return false;
-        }
-
-        if ($this->hasVerifiedEmail()) {
-            return false;
-        }
-
-        return ! $this->hasSalesmanAssignedActiveSubscription();
+        return $this->approval_status === ApprovalStatus::Approved;
     }
 
-    public function hasSalesmanAssignedActiveSubscription(): bool
+    public function isAwaitingApproval(): bool
     {
-        $vendor = $this->vendor;
+        return $this->approval_status === ApprovalStatus::Pending;
+    }
 
-        if ($vendor === null) {
-            return false;
-        }
+    public function isRejected(): bool
+    {
+        return $this->approval_status === ApprovalStatus::Rejected;
+    }
 
-        return $vendor->subscriptions()
-            ->where('source', 'salesman')
-            ->where('end_date', '>=', now())
-            ->exists();
+    /**
+     * Records an admin's decision. Kept here rather than written field-by
+     * -field at each call site so the status, the timestamp and the deciding
+     * admin can never drift apart — a status with no decided_at makes the
+     * audit log useless.
+     */
+    public function recordApprovalDecision(
+        ApprovalStatus $status,
+        ?User $decidedBy = null,
+        ?string $note = null,
+    ): void {
+        $this->forceFill([
+            'approval_status' => $status,
+            'approval_decided_at' => now(),
+            'approval_decided_by' => $decidedBy?->getKey(),
+            'approval_note' => $note,
+        ])->save();
+    }
+
+    /**
+     * The admin who approved or rejected this account, where there was one.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function approvalDecidedBy(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'approval_decided_by');
     }
 
     /**

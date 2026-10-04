@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Zone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -153,6 +154,49 @@ class VendorResourceTest extends TestCase
             ->assertSee('AC Service')
             ->assertSee('AC Installation')
             ->assertSee('Bodakdev');
+    }
+
+    /**
+     * Both KYC files, not just the shop photo.
+     *
+     * The ID proof was uploaded by the salesman and stored all along, but
+     * the infolist only ever rendered `id_proof_type` — so an admin
+     * reviewing a vendor saw the word "aadhaar" and no document, which is
+     * not something a verification decision can be made from.
+     */
+    public function test_the_detail_page_shows_both_kyc_documents(): void
+    {
+        $vendor = $this->vendor('pending_verification');
+
+        $vendor->forceFill([
+            'disk' => 'public',
+            'shop_photo_path' => 'vendor-kyc/'.$vendor->id.'/shop.jpg',
+            'id_proof_path' => 'vendor-kyc/'.$vendor->id.'/id.jpg',
+            'id_proof_type' => 'aadhaar',
+        ])->save();
+
+        Livewire::test(ViewVendor::class, ['record' => $vendor->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Shop photo')
+            ->assertSee('ID proof document')
+            ->assertSee('aadhaar')
+            // Each thumbnail links to the stored original — the rendered
+            // size is far too small to verify a document from.
+            ->assertSee(Storage::disk('public')->url($vendor->shop_photo_path), escape: false)
+            ->assertSee(Storage::disk('public')->url($vendor->id_proof_path), escape: false);
+    }
+
+    /**
+     * Neither entry may hard-fail when a draft was never given documents —
+     * that is the normal state for most of the salesman flow.
+     */
+    public function test_the_detail_page_renders_with_no_kyc_documents(): void
+    {
+        $vendor = $this->vendor('draft');
+
+        Livewire::test(ViewVendor::class, ['record' => $vendor->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Not provided');
     }
 
     public function test_the_detail_page_renders_for_a_vendor_with_no_subscription(): void

@@ -7,10 +7,17 @@ import '../vendor_detail_module/vendor_detail_view.dart';
 import 'customer_favorites_controller.dart';
 
 /// The customer's own favorited vendors (SPEC section 4 item 10). Same
-/// card shape as VendorSearchView's own vendor card — reachable from the
-/// customer home screen's app bar.
+/// card shape as VendorSearchView's own vendor card.
+///
+/// Reached two ways: as the middle tab of the home shell's bottom bar,
+/// and pushed as its own route from the profile shortcut. [embedded]
+/// distinguishes them — a tab must not draw its own app bar with a back
+/// button that would pop the whole shell.
 class CustomerFavoritesView extends StatelessWidget {
-  const CustomerFavoritesView({super.key});
+  const CustomerFavoritesView({super.key, this.embedded = false});
+
+  /// True when hosted inside the home shell's bottom bar.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -19,13 +26,18 @@ class CustomerFavoritesView extends StatelessWidget {
       dispose: (_) => Get.delete<CustomerFavoritesController>(),
       builder: (controller) {
         return Scaffold(
-          backgroundColor: ColorRes.backgroundColor,
+          backgroundColor: ServiceTokens.bg,
           appBar: AppBar(
+            backgroundColor: ServiceTokens.bg,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            automaticallyImplyLeading: !embedded,
+            centerTitle: embedded,
             title: BaseTextDMSans(
               text: StringRes.favoritesTab,
               fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: ColorRes.secondaryColor,
+              fontWeight: FontWeight.w800,
+              color: ServiceTokens.text,
             ).tr(),
           ),
           body: body(controller),

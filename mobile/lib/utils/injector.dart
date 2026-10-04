@@ -22,6 +22,12 @@ class Injector {
   static bool skipTap = false;
   static bool enableNotification = true;
 
+  /// Where the customer is shopping from — see [setCustomerLocation].
+  static String? customerLocationLabel;
+  static String? customerLocationAddress;
+  static double? customerLatitude;
+  static double? customerLongitude;
+
   /// Call once from main() before runApp.
   static Future<void> initialize() async {
     prefs = await SharedPreferences.getInstance();
@@ -31,6 +37,11 @@ class Injector {
     isGuestUser = prefs?.getBool(PrefKeys.isGuestUser) ?? true;
     skipTap = prefs?.getBool(PrefKeys.skipTap) ?? false;
     enableNotification = prefs?.getBool(PrefKeys.enableNotification) ?? true;
+
+    customerLocationLabel = prefs?.getString(PrefKeys.customerLocationLabel);
+    customerLocationAddress = prefs?.getString(PrefKeys.customerLocationAddress);
+    customerLatitude = prefs?.getDouble(PrefKeys.customerLatitude);
+    customerLongitude = prefs?.getDouble(PrefKeys.customerLongitude);
 
     final stored = prefs?.getString(PrefKeys.userData);
     if (stored != null && stored.isNotEmpty) {
@@ -75,6 +86,32 @@ class Injector {
     await prefs?.setString(PrefKeys.language, value);
   }
 
+  /// The place the customer is shopping from (SPEC section 4.2).
+  ///
+  /// Persisted so the home header reads correctly on the next cold start
+  /// instead of blanking while GPS re-resolves — and so a customer who
+  /// deliberately chose somewhere other than where they are standing is
+  /// not silently moved back by the next GPS fix.
+  static Future<void> setCustomerLocation({
+    required String label,
+    required String address,
+    required double latitude,
+    required double longitude,
+  }) async {
+    customerLocationLabel = label;
+    customerLocationAddress = address;
+    customerLatitude = latitude;
+    customerLongitude = longitude;
+
+    await prefs?.setString(PrefKeys.customerLocationLabel, label);
+    await prefs?.setString(PrefKeys.customerLocationAddress, address);
+    await prefs?.setDouble(PrefKeys.customerLatitude, latitude);
+    await prefs?.setDouble(PrefKeys.customerLongitude, longitude);
+  }
+
+  static bool get hasCustomerLocation =>
+      customerLatitude != null && customerLongitude != null;
+
   /// Wipes everything tied to the signed-in user. Called on sign-out and on a
   /// 401 from the API.
   static Future<void> clearUserData() async {
@@ -82,8 +119,20 @@ class Injector {
     accessToken = '';
     isGuestUser = true;
 
+    // The chosen location goes too: it is personal data tied to the
+    // account that just signed out, and leaving it would show the next
+    // person to sign in on this device where the last one was.
+    customerLocationLabel = null;
+    customerLocationAddress = null;
+    customerLatitude = null;
+    customerLongitude = null;
+
     await prefs?.remove(PrefKeys.accessToken);
     await prefs?.remove(PrefKeys.userData);
+    await prefs?.remove(PrefKeys.customerLocationLabel);
+    await prefs?.remove(PrefKeys.customerLocationAddress);
+    await prefs?.remove(PrefKeys.customerLatitude);
+    await prefs?.remove(PrefKeys.customerLongitude);
     await prefs?.setBool(PrefKeys.isGuestUser, true);
   }
 

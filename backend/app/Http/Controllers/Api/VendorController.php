@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Subscription\AddSubscriptionItemsRequest;
+use App\Http\Requests\Vendor\UpdateVendorMeRequest;
 use App\Http\Resources\VendorResource;
 use App\Http\Responses\ApiResponse;
 use App\Services\SubscriptionService;
@@ -40,6 +41,33 @@ class VendorController extends Controller
 
         return ApiResponse::success([
             'vendor' => new VendorResource($vendor->load('user')),
+            'active_subscription' => ActiveSubscriptionSummary::for($vendor),
+        ]);
+    }
+
+    /**
+     * The vendor editing their own business profile (SPEC section 3.2).
+     *
+     * The vendor is resolved from the token, exactly as me() does — the
+     * request carries no id, so there is no other vendor this can touch
+     * and nothing to authorize beyond the route's role check.
+     *
+     * Returns the same payload as me() so the app can replace its whole
+     * cached vendor in one step rather than patching fields locally and
+     * drifting from the server.
+     */
+    public function updateMe(UpdateVendorMeRequest $request): JsonResponse
+    {
+        $vendor = $request->user()->vendor;
+
+        if ($vendor === null) {
+            return ApiResponse::error('NOT_FOUND', 'No vendor profile exists for this account.', 404);
+        }
+
+        $vendor->update($request->updates());
+
+        return ApiResponse::success([
+            'vendor' => new VendorResource($vendor->fresh()->load('user')),
             'active_subscription' => ActiveSubscriptionSummary::for($vendor),
         ]);
     }

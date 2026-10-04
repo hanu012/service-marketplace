@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\Setting;
 use App\Models\Vendor;
 use App\Models\Zone;
+use App\Support\GeoDistance;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 /**
@@ -47,6 +49,21 @@ class VendorSearchService
     }
 
     /**
+     * SPEC section 4 item 5's sort (plan priority, then the rating floor,
+     * then recency) is the default and is always applied as the PRIMARY
+     * key — a vendor's paid placement does not get reshuffled by a
+     * customer's sort choice. These three chips (task 5.3's redesign)
+     * only change the SECONDARY key within that ordering, matching how
+     * marketplaces generally keep promoted listings on top regardless of
+     * how the customer chooses to sort the rest.
+     */
+    public const SORT_NEAREST = 'nearest';
+
+    public const SORT_RATING = 'rating';
+
+    public const SORT_NEW = 'new';
+
+    /**
      * @return array{zone: ?Zone, paginator: ?LengthAwarePaginator}
      */
     public function search(
@@ -55,6 +72,14 @@ class VendorSearchService
         ?float $lng,
         ?string $pincode,
         int $perPage = 15,
+        // Defaults to the rating/recency secondary sort, matching this
+        // method's own behaviour before the sort chips existed — every
+        // existing caller that does not pass $sort (the home screen's
+        // "Vendors near you" rail, any test omitting it) keeps the exact
+        // ordering it always had. "Nearest" is opt-in, not the new
+        // default, even though it IS the default chip selected on the
+        // search-results screen — that screen passes it explicitly.
+        string $sort = self::SORT_RATING,
     ): array {
         $zone = null;
 
@@ -81,7 +106,7 @@ class VendorSearchService
         // never left running alongside it — see Subscription's own
         // docblock), so this join can't multiply rows per vendor and
         // needs no distinct()/groupBy().
-        $paginator = Vendor::query()
+        $query = Vendor::query()
             // Vendor::scopeActive() leaves 'status'/'is_suspended'
             // unqualified, which becomes ambiguous once subscriptions
             // (its own 'status' column) is joined in — qualified here
@@ -113,15 +138,101 @@ class VendorSearchService
                 ->whereColumn('subscription_items.subscription_id', 'subscriptions.id')
                 ->where('subscription_items.item_type', 'zone')
                 ->where('subscription_items.item_id', $zone->id))
-            ->select('vendors.*')
-            ->orderBy('plan_quotas.priority_rank')
-            ->orderByRaw(
-                'CASE WHEN vendors.rating_count >= ? THEN vendors.rating_avg ELSE 0 END DESC',
-                [self::MIN_REVIEWS_FOR_RATING_SORT]
-            )
-            ->orderByDesc('vendors.created_at')
-            ->paginate($perPage);
+            ->select('vendors.*');
 
-        return ['zone' => $zone, 'paginator' => $paginator];
+        // Distance is selected whenever a point is available, independent
+        // of the chosen sort — "Top rated" still shows "1.2 km" on each
+        // card, it just is not what the list is ordered by.
+        if ($lat !== null && $lng !== null) {
+            [$expression, $bindings] = GeoDistance::sqlExpression('vendors.latitude', 'vendors.longitude', $lat, $lng);
+            $query->selectRaw("{$expression} as distance_km", $bindings);
+        }
+
+        $query->orderBy('plan_quotas.priority_rank');
+        $this->applySecondarySort($query, $sort, $lat, $lng);
+
+        return ['zone' => $zone, 'paginator' => $query->paginate($perPage)];
+    }
+
+    /**
+     * The three list-screen sort chips. "Nearest" silently falls back to
+     * the rating secondary sort when no point was given (a pincode-only
+     * lookup has no coordinate to measure from) — the chip still shows,
+     * it is just a no-op rather than an error the customer cannot act on.
+     */
+    private function applySecondarySort(Builder $query, string $sort, ?float $lat, ?float $lng): void
+    {
+        if ($sort === self::SORT_NEW) {
+            $query->orderByDesc('vendors.created_at');
+
+            return;
+        }
+
+        if ($sort === self::SORT_NEAREST && $lat !== null && $lng !== null) {
+            $query->orderBy('distance_km');
+
+            return;
+        }
+
+        // SORT_RATING, and SORT_NEAREST's no-coordinate fallback.
+        $query->orderByRaw(
+            'CASE WHEN vendors.rating_count >= ? THEN vendors.rating_avg ELSE 0 END DESC',
+            [self::MIN_REVIEWS_FOR_RATING_SORT]
+        )->orderByDesc('vendors.created_at');
+    }
+
+    /**
+     * How many matching vendors cover each subcategory in this zone —
+     * the customer subcategories screen's "X vendors" line (task 5.1's
+     * redesign). Same eligibility rule as search() above (status, active
+     * subscription, zone coverage); deliberately not calling search()
+     * itself, which paginates and sorts a single subcategory — this
+     * counts several subcategories in one query instead of N round trips.
+     *
+     * @param  array<int, int>  $subcategoryIds
+     * @return array<int, int> subcategory_id => vendor count
+     */
+    public function countBySubcategory(array $subcategoryIds, Zone $zone): array
+    {
+        if ($subcategoryIds === []) {
+            return [];
+        }
+
+        $today = Carbon::today();
+        $gracePeriodDays = (int) Setting::get('grace_period_days', 7);
+        $graceCutoff = $today->copy()->subDays($gracePeriodDays);
+
+        $rows = Vendor::query()
+            ->whereIn('vendors.status', ['active', 'grace'])
+            ->where('vendors.is_suspended', false)
+            ->join('subscriptions', 'subscriptions.vendor_id', '=', 'vendors.id')
+            ->join('subscription_items as sub_si', function ($join) use ($subcategoryIds) {
+                $join->on('sub_si.subscription_id', '=', 'subscriptions.id')
+                    ->where('sub_si.item_type', 'subcategory')
+                    ->whereIn('sub_si.item_id', $subcategoryIds);
+            })
+            ->whereIn('subscriptions.status', ['active', 'grace'])
+            ->where(function ($query) use ($today, $graceCutoff) {
+                $query->where(function ($active) use ($today) {
+                    $active->where('subscriptions.status', 'active')
+                        ->where('subscriptions.end_date', '>=', $today);
+                })->orWhere(function ($grace) use ($graceCutoff) {
+                    $grace->where('subscriptions.status', 'grace')
+                        ->where('subscriptions.end_date', '>=', $graceCutoff);
+                });
+            })
+            ->whereNull('subscriptions.deleted_at')
+            ->whereExists(fn ($query) => $query->selectRaw(1)
+                ->from('subscription_items as zone_si')
+                ->whereColumn('zone_si.subscription_id', 'subscriptions.id')
+                ->where('zone_si.item_type', 'zone')
+                ->where('zone_si.item_id', $zone->id))
+            ->selectRaw('sub_si.item_id as subcategory_id, count(distinct vendors.id) as vendor_count')
+            ->groupBy('sub_si.item_id')
+            ->get();
+
+        return $rows->pluck('vendor_count', 'subcategory_id')
+            ->map(fn ($count) => (int) $count)
+            ->all();
     }
 }

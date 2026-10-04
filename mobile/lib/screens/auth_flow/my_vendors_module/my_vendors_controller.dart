@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../../vendor_flow/select_plan_module/select_plan_view.dart';
 
 /// Salesman home, My Vendors tab (SPEC section 2.3): vendor name, plan,
 /// days to expiry. No leads column — Phase 5's leads table doesn't exist
@@ -70,6 +71,62 @@ class MyVendorsController extends GetxController {
       final owner = (v.ownerName ?? '').toLowerCase();
       return business.contains(searchQuery) || owner.contains(searchQuery);
     }).toList();
+  }
+
+  /// Picks an unfinished onboarding back up at the step it stopped at.
+  ///
+  /// A draft row means the details step completed and nothing after it
+  /// did, so the step to land on is always plan selection — see
+  /// SalesmanVendorModel.isDraft for why there is no other half-finished
+  /// state to distinguish.
+  ///
+  /// The list payload carries the business name but not the login email
+  /// (SalesmanVendorResource does not expose it), and the plan screen
+  /// needs both to hand on to Subscribe, so the vendor is re-read here
+  /// rather than guessed at.
+  Future<void> resumeDraftAPI(SalesmanVendorModel vendor) async {
+    final vendorId = vendor.id;
+
+    if (vendorId == null) {
+      return;
+    }
+
+    try {
+      Utils.showCircularProgressLottie(true);
+      final response = await DataSource.instance.vendorShowAPI(vendorId: vendorId);
+      Utils.showCircularProgressLottie(false);
+
+      if (response == null || !response.isSuccess || response.data == null) {
+        Utils.showToast(
+          response?.message ?? tr(StringRes.somethingWentWrong),
+          isError: true,
+        );
+        return;
+      }
+
+      final data = (response.data as Map<String, dynamic>)['vendor'];
+
+      if (data is! Map<String, dynamic>) {
+        Utils.showToast(tr(StringRes.somethingWentWrong), isError: true);
+        return;
+      }
+
+      await Get.to(() => SelectPlanView(
+            vendorId: vendorId,
+            businessName: (data['business_name'] as String?) ?? vendor.businessName ?? '',
+            loginEmail: (data['email'] as String?) ?? '',
+          ));
+
+      // They may have finished the sale while they were in there, which
+      // changes this row's status and plan.
+      await fetchVendorsAPI();
+    } catch (e) {
+      Utils.showCircularProgressLottie(false);
+      if (kDebugMode) {
+        print('Resume draft error $e');
+      }
+      Utils.showToast(tr(StringRes.somethingWentWrong), isError: true);
+    }
   }
 
   Future<void> fetchVendorsAPI() async {

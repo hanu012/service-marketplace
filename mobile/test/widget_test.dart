@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:service_marketplace/common_model/common_response.dart';
 import 'package:service_marketplace/common_model/user_model.dart';
 import 'package:service_marketplace/constants/color_res.dart';
+import 'package:service_marketplace/widgets/base_services.dart';
 import 'package:service_marketplace/widgets/base_button.dart';
 import 'package:service_marketplace/widgets/base_text.dart';
 import 'package:service_marketplace/widgets/base_textfield.dart';
@@ -94,16 +95,27 @@ void main() {
 
   group('Theme', () {
     test('palette matches the values recorded in CLAUDE.md', () {
-      // The Flutter apps use the violet scheme from the auth reference
-      // design; the Filament admin panel is still teal. CLAUDE.md's Theme
-      // section records both and calls the split out explicitly.
-      expect(ColorRes.primaryColor, const Color(0xFF8B5CF6)); // violet-500
-      expect(ColorRes.surfaceColor, const Color(0xFF16102E));
-      expect(ColorRes.backgroundColor, const Color(0xFF0B0716));
+      // Light canvas, deep teal accent — the same teal family as the
+      // Filament admin panel, which ends the split CLAUDE.md used to
+      // record between the two products.
+      expect(ColorRes.primaryColor, const Color(0xFF0F766E)); // teal-700
+      expect(ColorRes.surfaceColor, const Color(0xFFFFFFFF));
+      expect(ColorRes.backgroundColor, const Color(0xFFF6F7F9));
     });
 
-    test('the page background is not pure black', () {
-      expect(ColorRes.backgroundColor, isNot(const Color(0xFF000000)));
+    test('ServiceTokens shares the same accent as ColorRes', () {
+      // Two palettes, one brand. They drifted apart once already; a
+      // mismatch here is the first symptom.
+      expect(ServiceTokens.accent, ColorRes.primaryColor);
+      expect(ServiceTokens.bg, ColorRes.backgroundColor);
+      expect(ServiceTokens.card, ColorRes.surfaceColor);
+    });
+
+    test('the page background is not pure white', () {
+      // An off-white canvas is what lets a white card read as raised
+      // against it — on pure white the cards would vanish.
+      expect(ColorRes.backgroundColor, isNot(const Color(0xFFFFFFFF)));
+      expect(ColorRes.surfaceColor, isNot(ColorRes.backgroundColor));
     });
   });
 

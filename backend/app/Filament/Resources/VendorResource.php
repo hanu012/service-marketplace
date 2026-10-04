@@ -52,6 +52,17 @@ class VendorResource extends Resource
 
     protected static ?string $navigationGroup = 'People';
 
+    /**
+     * Hidden from the sidebar: a vendor is reached through its user now,
+     * on the Vendor tab of that user's page, so People lists Users alone.
+     * The resource stays registered — its pages, policy and tests are
+     * still the implementation behind that tab, and its URLs resolve.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static ?int $navigationSort = 0;
 
     protected static ?string $recordTitleAttribute = 'business_name';
@@ -231,9 +242,37 @@ class VendorResource extends Resource
             Section::make('KYC documents')
                 ->columns(2)
                 ->schema([
+                    // Both thumbnails click through to the stored original:
+                    // what is rendered here is far too small to check a
+                    // document against a business. A plain link rather than
+                    // an in-page lightbox because CLAUDE.md bans
+                    // third-party CDN scripts in this panel, and the
+                    // browser already displays an image perfectly well.
+                    //
+                    // URLs come from TracksFileDisk::fileUrl(), which
+                    // resolves against the row's own `disk` and returns
+                    // null for an empty path — Storage::url(null) would
+                    // otherwise produce a link to the bucket root.
                     ImageEntry::make('shop_photo_path')
                         ->label('Shop photo')
                         ->disk(fn (Vendor $record): string => $record->disk ?? config('filesystems.default'))
+                        ->url(fn (Vendor $record): ?string => $record->fileUrl($record->shop_photo_path))
+                        ->openUrlInNewTab()
+                        ->tooltip('Open full size')
+                        ->placeholder('Not provided'),
+
+                    // The document itself, not just which kind it is.
+                    // Verification is a judgement about whether the ID
+                    // matches the business — an admin cannot make it from
+                    // the word "aadhaar", which is all this section showed
+                    // before: the file was uploaded and stored all along,
+                    // it simply had no entry rendering it.
+                    ImageEntry::make('id_proof_path')
+                        ->label('ID proof document')
+                        ->disk(fn (Vendor $record): string => $record->disk ?? config('filesystems.default'))
+                        ->url(fn (Vendor $record): ?string => $record->fileUrl($record->id_proof_path))
+                        ->openUrlInNewTab()
+                        ->tooltip('Open full size')
                         ->placeholder('Not provided'),
 
                     TextEntry::make('id_proof_type')

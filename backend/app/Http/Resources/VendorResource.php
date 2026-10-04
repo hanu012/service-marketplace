@@ -25,6 +25,8 @@ class VendorResource extends JsonResource
             'phone' => $this->phone,
             'email' => $this->whenLoaded('user', fn () => $this->user->email),
             'address' => $this->address,
+            'city' => $this->city,
+            'about' => $this->about,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
             'status' => $this->status,

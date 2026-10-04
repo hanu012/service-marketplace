@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ApprovalStatus;
 use App\Enums\UserRole;
 use App\Models\Salesman;
 use App\Models\User;
@@ -103,10 +104,14 @@ class VendorDraftService
             ]);
 
             $user->forceFill([
-                // Met in person by the salesman, so there is no address to
-                // confirm (SPEC sections 3.1 and 7 - salesman-added vendors
-                // skip verification).
-                'email_verified_at' => now(),
+                // Met in person by the salesman, who is themselves a vetted
+                // account — that visit is the vetting, so the vendor does
+                // not also sit in the admin's pending queue (SPEC sections
+                // 3.1 and 7: salesman-added vendors skip verification).
+                'approval_status' => ApprovalStatus::Approved,
+                'approval_decided_at' => now(),
+                'approval_decided_by' => $salesman?->user_id,
+                'approval_note' => 'Onboarded in person by a salesman.',
                 // Still true: whatever password they are eventually given is
                 // one they did not choose.
                 'must_change_password' => true,

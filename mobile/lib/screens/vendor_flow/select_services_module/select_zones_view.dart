@@ -62,7 +62,7 @@ class SelectZonesView extends StatelessWidget {
         Padding(
           padding: EdgeInsets.symmetric(vertical: 60.getSize),
           child: Center(
-            child: CupertinoActivityIndicator(color: ServiceTokens.purpleBright),
+            child: CupertinoActivityIndicator(color: ServiceTokens.accentBright),
           ),
         ),
       ];
@@ -170,55 +170,125 @@ class SelectZonesView extends StatelessWidget {
       return;
     }
 
-    Get.dialog(paymentModeDialog(controller));
+    // A bottom sheet rather than the AlertDialog this used to be: three
+    // options each needing a name, an explanation and a selected state do
+    // not fit a dialog's cramped content box, and the free-trial stepper
+    // appearing inside one made it jump. A sheet also puts the choice
+    // under the thumb, which matters for a salesman doing this standing
+    // up in a shop.
+    Get.bottomSheet(
+      paymentModeSheet(controller),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
   }
 
-  /// SPEC section 2.2: "choose payment mode -> confirmation dialog -> single
-  /// API call." Wrapped in its own GetBuilder so a tap updates the radio
-  /// selection live without closing the dialog.
-  Widget paymentModeDialog(SelectServicesController controller) {
+  /// SPEC section 2.2: "choose payment mode -> confirmation -> single API
+  /// call." Wrapped in its own GetBuilder so a tap updates the selection
+  /// live without closing the sheet.
+  Widget paymentModeSheet(SelectServicesController controller) {
     return GetBuilder<SelectServicesController>(
       builder: (controller) {
-        return AlertDialog(
-          backgroundColor: ServiceTokens.card,
-          title: BaseTextDMSans(
-            text: StringRes.choosePaymentMode,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: ServiceTokens.text,
-          ).tr(),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              paymentModeOption(controller, 'cash', StringRes.paymentModeCash),
-              paymentModeOption(controller, 'online', StringRes.paymentModeOnline),
-              paymentModeOption(controller, 'free', StringRes.paymentModeFree),
-              if (controller.selectedPaymentMode == 'free') ...[
-                8.heightSpacer,
-                freeTrialDurationPicker(controller),
-              ],
-            ],
+        return Container(
+          decoration: BoxDecoration(
+            color: ServiceTokens.card,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(26.getSize)),
+            border: Border.all(color: ServiceTokens.stroke),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(),
-              child: BaseTextDMSans(
-                text: StringRes.cancel,
-                color: ServiceTokens.muted,
-              ).tr(),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                20.getSize,
+                12.getSize,
+                20.getSize,
+                18.getSize,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      height: 4.getSize,
+                      width: 44.getSize,
+                      decoration: BoxDecoration(
+                        color: ServiceTokens.stroke2,
+                        borderRadius: BorderRadius.circular(4.getSize),
+                      ),
+                    ),
+                  ),
+                  18.heightSpacer,
+                  BaseTextDMSans(
+                    text: StringRes.choosePaymentMode,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: ServiceTokens.text,
+                    textAlign: TextAlign.start,
+                  ).tr(),
+                  6.heightSpacer,
+                  BaseTextDMSans(
+                    text: StringRes.choosePaymentModeDesc,
+                    fontSize: 13.5,
+                    color: ServiceTokens.muted,
+                    textAlign: TextAlign.start,
+                    maxLines: 2,
+                  ).tr(),
+                  18.heightSpacer,
+                  paymentModeOption(
+                    controller,
+                    'cash',
+                    Icons.payments_outlined,
+                    StringRes.paymentModeCash,
+                    StringRes.paymentModeCashDesc,
+                  ),
+                  10.heightSpacer,
+                  paymentModeOption(
+                    controller,
+                    'online',
+                    Icons.credit_card,
+                    StringRes.paymentModeOnline,
+                    StringRes.paymentModeOnlineDesc,
+                  ),
+                  10.heightSpacer,
+                  paymentModeOption(
+                    controller,
+                    'free',
+                    Icons.card_giftcard,
+                    StringRes.paymentModeFree,
+                    StringRes.paymentModeFreeDesc,
+                  ),
+                  if (controller.selectedPaymentMode == 'free') ...[
+                    14.heightSpacer,
+                    freeTrialDurationPicker(controller),
+                  ],
+                  22.heightSpacer,
+                  VendorPrimaryButton(
+                    label: tr(StringRes.confirmSubscribe),
+                    onTap: () {
+                      // Closed first so the progress overlay is not
+                      // stacked behind a sheet nobody can dismiss.
+                      Get.back();
+                      controller.subscribeAPI();
+                    },
+                  ),
+                  8.heightSpacer,
+                  Center(
+                    child: TextButton(
+                      onPressed: Get.back,
+                      child: BaseTextDMSans(
+                        text: StringRes.cancel,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: ServiceTokens.muted,
+                      ).tr(),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            TextButton(
-              onPressed: () {
-                Get.back();
-                controller.subscribeAPI();
-              },
-              child: BaseTextDMSans(
-                text: StringRes.confirmSubscribe,
-                color: ServiceTokens.purpleBright,
-                fontWeight: FontWeight.w700,
-              ).tr(),
-            ),
-          ],
+          ),
         );
       },
     );
@@ -248,7 +318,7 @@ class SelectZonesView extends StatelessWidget {
                     ? () => controller.setFreeTrialDays(controller.freeTrialDays - 1)
                     : null,
                 icon: const Icon(Icons.remove_circle_outline,
-                    color: ServiceTokens.purpleBright),
+                    color: ServiceTokens.accentBright),
               ),
               BaseTextDMSans(
                 text: '${controller.freeTrialDays} ${tr(StringRes.daysUnit)}',
@@ -261,7 +331,7 @@ class SelectZonesView extends StatelessWidget {
                     ? () => controller.setFreeTrialDays(controller.freeTrialDays + 1)
                     : null,
                 icon: const Icon(Icons.add_circle_outline,
-                    color: ServiceTokens.purpleBright),
+                    color: ServiceTokens.accentBright),
               ),
             ],
           ),
@@ -277,31 +347,102 @@ class SelectZonesView extends StatelessWidget {
     );
   }
 
+  /// One payment method: icon tile, name, one line of explanation, and the
+  /// selected tick.
+  ///
+  /// Carries a description now because the three modes are not equally
+  /// obvious — "Join as Free" in particular needed saying out loud that no
+  /// money changes hands.
   Widget paymentModeOption(
     SelectServicesController controller,
     String mode,
+    IconData icon,
     String labelKey,
+    String descKey,
   ) {
     final selected = controller.selectedPaymentMode == mode;
 
-    return InkWell(
-      onTap: () => controller.selectPaymentMode(mode),
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.getSize),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 20.getSize,
-              color: selected ? ServiceTokens.purpleBright : ServiceTokens.muted,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => controller.selectPaymentMode(mode),
+        borderRadius: BorderRadius.circular(16.getSize),
+        child: Container(
+          padding: EdgeInsets.all(14.getSize),
+          decoration: BoxDecoration(
+            color: selected ? ServiceTokens.card2 : ServiceTokens.bg,
+            borderRadius: BorderRadius.circular(16.getSize),
+            border: Border.all(
+              color:
+                  selected ? ServiceTokens.accentBright : ServiceTokens.stroke,
+              width: selected ? 1.5 : 1,
             ),
-            10.widthSpacer,
-            BaseTextDMSans(
-              text: labelKey,
-              fontSize: 14,
-              color: ServiceTokens.text,
-            ).tr(),
-          ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                height: 42.getSize,
+                width: 42.getSize,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: ServiceTokens.accent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(13.getSize),
+                  border: Border.all(
+                    color: ServiceTokens.accent.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  size: 19.getSize,
+                  color: ServiceTokens.accentBright,
+                ),
+              ),
+              13.widthSpacer,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    BaseTextDMSans(
+                      text: labelKey,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: ServiceTokens.text,
+                      textAlign: TextAlign.start,
+                    ).tr(),
+                    3.heightSpacer,
+                    BaseTextDMSans(
+                      text: descKey,
+                      fontSize: 12.5,
+                      color: ServiceTokens.muted,
+                      textAlign: TextAlign.start,
+                      maxLines: 2,
+                    ).tr(),
+                  ],
+                ),
+              ),
+              10.widthSpacer,
+              Container(
+                height: 24.getSize,
+                width: 24.getSize,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      selected ? ServiceTokens.accentBright : Colors.transparent,
+                  border: Border.all(
+                    color: selected
+                        ? ServiceTokens.accentBright
+                        : ServiceTokens.stroke2,
+                    width: 1.6,
+                  ),
+                ),
+                child: selected
+                    ? Icon(Icons.check, size: 14.getSize, color: Colors.white)
+                    : null,
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
@@ -18,10 +20,48 @@ class VendorDashboardController extends GetxController {
   VendorMeModel? vendorMe;
   bool isLoading = false;
 
+  /// Only used to name the next tier up in the Overview upsell card.
+  List<PlanModel> plans = [];
+
+  /// Which of the five bottom-bar destinations is showing. Held here
+  /// rather than in a TabController so the shell can stay a
+  /// StatelessWidget like every other view in this app.
+  int currentTab = 0;
+
   @override
   void onInit() {
     super.onInit();
     fetchVendorMeAPI();
+  }
+
+  void selectTab(int index) {
+    if (index == currentTab) {
+      return;
+    }
+
+    currentTab = index;
+    update();
+  }
+
+  /// Two letters for the hero's avatar tile, from the business name.
+  String get initials {
+    final parts = (vendorMe?.businessName ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return '?';
+    }
+
+    if (parts.length == 1) {
+      final one = parts.first;
+
+      return (one.length >= 2 ? one.substring(0, 2) : one).toUpperCase();
+    }
+
+    return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
   }
 
   Future<void> fetchVendorMeAPI() async {
@@ -40,6 +80,11 @@ class VendorDashboardController extends GetxController {
       }
 
       vendorMe = VendorMeModel.fromJson(response.data as Map<String, dynamic>);
+
+      // Fire-and-forget: the upsell card is the only thing that needs
+      // these, so a failure to load them hides that card rather than
+      // failing the dashboard the vendor actually came for.
+      unawaited(fetchPlansAPI());
     } catch (e) {
       if (kDebugMode) {
         print('Fetch vendor dashboard error $e');
@@ -49,6 +94,55 @@ class VendorDashboardController extends GetxController {
       isLoading = false;
       update();
     }
+  }
+
+  /// Plans, purely so the dashboard can name the next tier up.
+  Future<void> fetchPlansAPI() async {
+    try {
+      final response = await DataSource.instance.plansAPI();
+
+      if (response == null || !response.isSuccess || response.data == null) {
+        return;
+      }
+
+      plans = (response.data as List<dynamic>)
+          .map((e) => PlanModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      update();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Fetch plans for upsell error $e');
+      }
+    }
+  }
+
+  /// The cheapest plan that costs more than the one they are on, or null
+  /// when they are already on the top tier (or plans failed to load).
+  ///
+  /// Matched by name because that is all ActiveSubscriptionModel carries —
+  /// there is no plan id on the subscription summary. A rename server-side
+  /// would drop the upsell rather than recommend the wrong plan, which is
+  /// the right way round for something that quotes prices.
+  PlanModel? get upgradePlan {
+    final currentName = vendorMe?.activeSubscription?.planName;
+
+    if (currentName == null || plans.isEmpty) {
+      return null;
+    }
+
+    final current = plans.where((p) => p.name == currentName).firstOrNull;
+
+    if (current == null) {
+      return null;
+    }
+
+    final dearer = plans
+        .where((p) => (p.pricePaise ?? 0) > (current.pricePaise ?? 0))
+        .toList()
+      ..sort((a, b) => (a.pricePaise ?? 0).compareTo(b.pricePaise ?? 0));
+
+    return dearer.firstOrNull;
   }
 
   Future<void> logoutAPI() async {

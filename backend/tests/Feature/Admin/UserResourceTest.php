@@ -17,11 +17,21 @@ class UserResourceTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * The admin every test in this class acts as. Held so assertions can
+     * check what was recorded *against* them — approval decisions name the
+     * deciding admin, and "some admin did it" is not what that column is
+     * for.
+     */
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->actingAs(User::factory()->role(UserRole::Admin)->create());
+        $this->admin = User::factory()->role(UserRole::Admin)->create();
+
+        $this->actingAs($this->admin);
     }
 
     public function test_the_list_page_renders(): void
@@ -159,10 +169,11 @@ class UserResourceTest extends TestCase
         $this->assertNull($user->vendor);
     }
 
-    public function test_created_accounts_are_marked_email_verified(): void
+    public function test_created_accounts_are_approved_on_creation(): void
     {
-        // The admin vouches for them — the behaviour
-        // User::requiresEmailVerification() documents.
+        // The admin filling in the form IS the vetting (SPEC section 3.1) —
+        // sending the account to the pending queue would ask them to
+        // approve their own work.
         Livewire::test(CreateUser::class)
             ->fillForm([
                 'name' => 'Meera', 'email' => 'meera3@example.com', 'role' => 'customer',
@@ -171,7 +182,13 @@ class UserResourceTest extends TestCase
             ->call('create')
             ->assertHasNoFormErrors();
 
-        $this->assertTrue(User::where('email', 'meera3@example.com')->sole()->hasVerifiedEmail());
+        $user = User::where('email', 'meera3@example.com')->sole();
+
+        $this->assertTrue($user->isApproved());
+        // Recorded against the acting admin, not left blank — the audit
+        // trail has to show who let the account in.
+        $this->assertSame($this->admin->id, $user->approval_decided_by);
+        $this->assertNotNull($user->approval_decided_at);
     }
 
     public function test_a_temp_password_is_generated_and_usable(): void
@@ -401,5 +418,115 @@ class UserResourceTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertSame(UserRole::Admin, User::where('email', 'admin2@example.com')->sole()->role);
+    }
+
+    /**
+     * The approval queue (SPEC section 3.1). With no mail going out, this
+     * action is the only thing that makes a self-registered account usable
+     * — so it is worth asserting it writes all three columns, not just the
+     * status.
+     */
+    public function test_approving_a_pending_user_records_the_full_decision(): void
+    {
+        $pending = User::factory()->pending()->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableAction('approve', $pending)
+            ->assertHasNoTableActionErrors();
+
+        $pending->refresh();
+
+        $this->assertTrue($pending->isApproved());
+        $this->assertSame($this->admin->id, $pending->approval_decided_by);
+        $this->assertNotNull($pending->approval_decided_at);
+    }
+
+    public function test_rejecting_a_user_stores_the_reason_shown_to_them(): void
+    {
+        $pending = User::factory()->pending()->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableAction('reject', $pending, data: [
+                'approval_note' => 'Business address could not be confirmed.',
+            ])
+            ->assertHasNoTableActionErrors();
+
+        $pending->refresh();
+
+        $this->assertTrue($pending->isRejected());
+        $this->assertSame(
+            'Business address could not be confirmed.',
+            $pending->approval_note,
+        );
+    }
+
+    /**
+     * The reason is what the app shows a rejected user. Rejecting without
+     * one would leave them staring at a generic failure, so the field is
+     * required rather than optional-with-a-fallback.
+     */
+    public function test_rejecting_without_a_reason_is_refused(): void
+    {
+        $pending = User::factory()->pending()->create();
+
+        Livewire::test(ListUsers::class)
+            ->callTableAction('reject', $pending, data: ['approval_note' => ''])
+            ->assertHasTableActionErrors(['approval_note']);
+
+        $this->assertTrue($pending->refresh()->isAwaitingApproval());
+    }
+
+    /**
+     * Bulk approve exists; bulk reject deliberately does not, because one
+     * pasted reason across a mixed selection is worse than none. Asserted
+     * as absent rather than present-but-disabled, per CLAUDE.md — this
+     * fails loudly if someone adds it back.
+     */
+    public function test_there_is_no_bulk_reject_action(): void
+    {
+        Livewire::test(ListUsers::class)
+            ->assertTableBulkActionExists('approve')
+            ->assertTableBulkActionDoesNotExist('reject');
+    }
+
+    public function test_bulk_approve_skips_already_approved_accounts(): void
+    {
+        $pending = User::factory()->pending()->create();
+        $alreadyApproved = User::factory()->create();
+
+        $decidedAt = $alreadyApproved->approval_decided_at;
+
+        Livewire::test(ListUsers::class)
+            ->callTableBulkAction('approve', [$pending, $alreadyApproved]);
+
+        $this->assertTrue($pending->refresh()->isApproved());
+
+        // Untouched, not re-stamped — re-deciding an existing approval
+        // would rewrite who approved it and when.
+        $this->assertEquals(
+            $decidedAt->toDateTimeString(),
+            $alreadyApproved->refresh()->approval_decided_at->toDateTimeString(),
+        );
+    }
+
+    /**
+     * The entire password-recovery path now that no mail is sent. If this
+     * action goes away, a locked-out user has to be deleted and recreated.
+     */
+    public function test_resetting_a_password_issues_a_working_temporary_one(): void
+    {
+        $user = User::factory()->create([
+            'password' => Hash::make('the-old-password'),
+            'must_change_password' => false,
+        ]);
+
+        Livewire::test(ListUsers::class)
+            ->callTableAction('resetPassword', $user)
+            ->assertHasNoTableActionErrors();
+
+        $user->refresh();
+
+        $this->assertFalse(Hash::check('the-old-password', $user->password));
+        $this->assertTrue($user->must_change_password);
     }
 }

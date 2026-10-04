@@ -26,6 +26,8 @@ class Subcategory extends Model
         'disk',
         'sort_order',
         'is_active',
+        'service_type',
+        'is_popular',
     ];
 
     protected function casts(): array
@@ -33,6 +35,7 @@ class Subcategory extends Model
         return [
             'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'is_popular' => 'boolean',
         ];
     }
 

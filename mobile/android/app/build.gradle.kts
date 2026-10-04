@@ -1,3 +1,17 @@
+import java.io.FileInputStream
+import java.util.Properties
+
+// The Maps SDK key lives in local.properties, which is gitignored — a Maps
+// key is billable, so it must never reach the repository. An absent key is
+// deliberately not a build failure: the app still builds and runs, and only
+// the map surface itself renders blank.
+val mapsApiKey: String = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        FileInputStream(file).use { load(it) }
+    }
+}.getProperty("MAPS_API_KEY") ?: ""
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -27,6 +41,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Consumed by the <meta-data> entry in AndroidManifest.xml.
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     // Three store listings from one codebase. Each flavour gets its own

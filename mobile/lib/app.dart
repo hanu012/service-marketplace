@@ -3,6 +3,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'constants/app.export.dart';
 import 'constants/constant.dart';
 import 'constants/flavor_config.dart';
+import 'screens/auth_flow/account_verification_module/account_verification_view.dart';
 import 'screens/auth_flow/change_password_module/change_password_view.dart';
 import 'screens/auth_flow/customer_home_module/customer_home_view.dart';
 import 'screens/auth_flow/customer_login_module/customer_login_view.dart';
@@ -98,6 +99,11 @@ class ServiceMarketplaceApp extends StatelessWidget {
   /// Each flavour's entry screen — all three now check login state and
   /// land on their real screens (task 4.6 replaced customer's ported
   /// create_account_module placeholder, the last one still stubbed).
+  ///
+  /// Both gates are re-checked here, not just at login: the stored session
+  /// outlives the app, so a user who was approved yesterday and rejected
+  /// overnight must not be dropped onto a home screen the server will
+  /// refuse to serve.
   Widget _firstScreen(FlavorConfig config) {
     switch (config.flavor) {
       case Flavor.salesman:
@@ -106,9 +112,7 @@ class ServiceMarketplaceApp extends StatelessWidget {
         // it is done, so landing on the home screen would fail on its first
         // request.
         if (Injector.isLoggedIn) {
-          return (Injector.userData?.mustChangePassword ?? false)
-              ? const ChangePasswordView()
-              : const SalesmanHomeView();
+          return _gatedOr(const SalesmanHomeView());
         }
 
         return const SalesmanLoginView();
@@ -117,33 +121,53 @@ class ServiceMarketplaceApp extends StatelessWidget {
         // salesman-specific, so an admin-created vendor account still needs
         // it. A self-registered vendor never has this set.
         if (Injector.isLoggedIn) {
-          return (Injector.userData?.mustChangePassword ?? false)
-              ? const ChangePasswordView()
-              : const VendorLandingView();
+          return _gatedOr(const VendorLandingView());
         }
 
         return const VendorLoginView();
       case Flavor.customer:
-        // No forced-change branch: a customer registration never sets a
-        // temporary password (SPEC section 4.1 is email + password only,
-        // no admin-created customer accounts), so must_change_password
-        // can't be true for this role.
+        // Customers have no forced-change branch of their own — a customer
+        // registration never sets a temporary password (SPEC section 4.1)
+        // — but they are subject to the approval gate like every other
+        // role, so they go through the same helper.
         if (Injector.isLoggedIn) {
-          return const CustomerHomeView();
+          return _gatedOr(const CustomerHomeView());
         }
 
         return const CustomerLoginView();
     }
   }
 
+  /// [home] unless the stored session is blocked by one of the two
+  /// platform-wide gates, in the same order the server applies them:
+  /// RequirePasswordChange before RequireApprovedAccount. Sending a user
+  /// who needs both to the pending screen first would strand them, since
+  /// the password gate refuses that screen's own calls.
+  Widget _gatedOr(Widget home) {
+    final user = Injector.userData;
+
+    if (user?.mustChangePassword ?? false) {
+      return const ChangePasswordView();
+    }
+
+    if (!(user?.isApproved ?? false)) {
+      return const AccountVerificationView();
+    }
+
+    return home;
+  }
+
   ThemeData get _theme => ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: ColorRes.backgroundColor,
         fontFamily: FontFamily.dmSans,
-        colorScheme: ColorScheme.dark(
+        colorScheme: ColorScheme.light(
           primary: ColorRes.primaryColor,
-          onPrimary: ColorRes.backgroundColor,
+          // White, not the canvas: the canvas is now near-white itself,
+          // so using it here would put white-on-white inside any widget
+          // that paints onPrimary over the primary fill.
+          onPrimary: ColorRes.whiteColor,
           surface: ColorRes.surfaceColor,
           onSurface: ColorRes.secondaryColor,
           error: ColorRes.errorColor,
@@ -151,6 +175,7 @@ class ServiceMarketplaceApp extends StatelessWidget {
         appBarTheme: AppBarTheme(
           backgroundColor: ColorRes.surfaceColor,
           foregroundColor: ColorRes.secondaryColor,
+          surfaceTintColor: ColorRes.transparent,
           elevation: 0,
         ),
       );

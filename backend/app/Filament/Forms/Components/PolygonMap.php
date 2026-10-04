@@ -48,6 +48,18 @@ class PolygonMap extends Field
     }
 
     /**
+     * Whether the search box is shown.
+     *
+     * Place search is Google-backed and proxied through
+     * PlaceLookupController; with no key configured there is nothing to
+     * search, so the box is hidden rather than shown and broken.
+     */
+    public function hasPlaceSearch(): bool
+    {
+        return filled(config('map.google_api_key'));
+    }
+
+    /**
      * Where the map opens when there is nothing drawn yet.
      *
      * Named getMapCenter, not getDefaultView: Filament's ViewComponent already

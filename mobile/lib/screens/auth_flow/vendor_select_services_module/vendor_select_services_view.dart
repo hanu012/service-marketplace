@@ -92,7 +92,7 @@ class VendorSelectServicesView extends StatelessWidget {
         Padding(
           padding: EdgeInsets.symmetric(vertical: 60.getSize),
           child: Center(
-            child: CupertinoActivityIndicator(color: ServiceTokens.purpleBright),
+            child: CupertinoActivityIndicator(color: ServiceTokens.accentBright),
           ),
         ),
       ];

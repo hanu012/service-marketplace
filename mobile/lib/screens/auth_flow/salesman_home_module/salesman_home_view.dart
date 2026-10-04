@@ -28,17 +28,26 @@ class SalesmanHomeView extends StatelessWidget {
       init: SalesmanHomeController(),
       dispose: (_) => Get.delete<SalesmanHomeController>(),
       builder: (controller) {
+        // With earnings hidden there is one tab left. The TabBar is kept
+        // rather than dropped so the screen does not visibly restructure
+        // when the flag goes back on, and so "My Vendors" still reads as a
+        // heading for the list below it.
+        const showEarnings = Constants.showSalesmanEarnings;
+
         return DefaultTabController(
-          length: 2,
+          length: showEarnings ? 2 : 1,
           child: Scaffold(
             backgroundColor: ServiceTokens.bg,
             body: Column(
               children: [
                 hero(controller),
                 tabs(),
-                const Expanded(
+                Expanded(
                   child: TabBarView(
-                    children: [MyVendorsView(), EarningsView()],
+                    children: [
+                      const MyVendorsView(),
+                      if (showEarnings) const EarningsView(),
+                    ],
                   ),
                 ),
               ],
@@ -153,10 +162,11 @@ class SalesmanHomeView extends StatelessWidget {
                 value: '${stats?.subscribedVendors ?? 0}',
                 label: tr(StringRes.subscribedLabel),
               ),
-              HeroStatTile(
-                value: Utils.compactRupees(stats?.earningsPaise ?? 0),
-                label: tr(StringRes.earningsLabel),
-              ),
+              if (Constants.showSalesmanEarnings)
+                HeroStatTile(
+                  value: Utils.compactRupees(stats?.earningsPaise ?? 0),
+                  label: tr(StringRes.earningsLabel),
+                ),
             ],
           ),
         ],
@@ -171,9 +181,9 @@ class SalesmanHomeView extends StatelessWidget {
       child: TabBar(
         isScrollable: true,
         tabAlignment: TabAlignment.start,
-        labelColor: Colors.white,
-        unselectedLabelColor: ServiceTokens.muted2,
-        indicatorColor: ServiceTokens.purpleBright,
+        labelColor: ServiceTokens.accent,
+        unselectedLabelColor: ServiceTokens.navInactive,
+        indicatorColor: ServiceTokens.accent,
         indicatorWeight: 3,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
@@ -189,7 +199,7 @@ class SalesmanHomeView extends StatelessWidget {
         ),
         tabs: [
           Tab(text: tr(StringRes.myVendorsTab)),
-          Tab(text: tr(StringRes.earningsTab)),
+          if (Constants.showSalesmanEarnings) Tab(text: tr(StringRes.earningsTab)),
         ],
       ),
     );

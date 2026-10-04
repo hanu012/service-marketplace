@@ -1,14 +1,19 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../account_verification_module/account_verification_view.dart';
 import '../change_password_module/change_password_view.dart';
-import '../email_verification_pending_module/email_verification_pending_view.dart';
 import '../vendor_landing_module/vendor_landing_view.dart';
 
 /// Vendor sign-in (SPEC section 3.1) — same shape as
 /// SalesmanLoginController, but vendors can self-register (see
-/// VendorRegisterController), and an unverified vendor is redirected to a
-/// concrete next action rather than just a toast.
+/// VendorRegisterController).
+///
+/// Sign-in itself is never refused for want of approval: the server issues
+/// a token regardless and the gate lives on the other endpoints, so an
+/// unapproved vendor lands on the account-verification screen with a
+/// working session rather than being bounced back to this form with a
+/// toast and no way forward.
 class VendorLoginController extends GetxController {
   TextEditingController emailController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
@@ -48,14 +53,6 @@ class VendorLoginController extends GetxController {
       }
 
       if (!commonResponse.isSuccess || commonResponse.data == null) {
-        // SPEC section 3.1/7: an unverified vendor gets a concrete next
-        // action, not just a toast — they came here specifically to sign
-        // in and now need to go confirm their email instead.
-        if (commonResponse.errorCode == 'EMAIL_NOT_VERIFIED') {
-          Get.to(() => EmailVerificationPendingView(email: email));
-          return;
-        }
-
         Utils.showToast(
           commonResponse.message ?? tr(StringRes.invalidCredentials),
           isError: true,
@@ -68,6 +65,15 @@ class VendorLoginController extends GetxController {
 
       if (userModel.mustChangePassword) {
         Utils.transitionWithOffAll(const ChangePasswordView());
+        return;
+      }
+
+      // Checked after the forced password change, matching the server:
+      // RequirePasswordChange runs before RequireApprovedAccount, so a user
+      // carrying both would be sent to a pending screen whose every button
+      // the password gate would then refuse.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
         return;
       }
 

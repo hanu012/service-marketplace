@@ -31,11 +31,49 @@ class VendorPortfolioController extends GetxController {
 
   List<PortfolioMediaModel> media = [];
   List<SelectedServiceItemModel> subcategories = [];
+
+  /// For the hero. Taken from this screen's own /vendors/me call rather
+  /// than reached for on the dashboard controller — the two already fetch
+  /// independently, and a cross-controller read would couple this screen
+  /// to being hosted by that shell.
+  String businessName = '';
+
+  /// Two letters for the hero's avatar tile.
+  String get initials {
+    final parts = businessName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return '?';
+    }
+
+    if (parts.length == 1) {
+      final one = parts.first;
+
+      return (one.length >= 2 ? one.substring(0, 2) : one).toUpperCase();
+    }
+
+    return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
+  }
   QuotaResourceModel? photosQuota;
   QuotaResourceModel? videosQuota;
   bool isLoading = false;
   bool isUploading = false;
   int? selectedSubcategoryId;
+
+  /// Which kind of file is going up, so the progress card can name it.
+  /// Null whenever nothing is uploading.
+  String? uploadingType;
+
+  /// 0..1 of the request body written so far, or null until the first
+  /// callback arrives — and while the server is still working after the
+  /// last byte went out. A video upload finishes sending long before the
+  /// response comes back, and pinning the bar at 100% through that wait
+  /// reads as a hang, so the view shows an indeterminate bar instead.
+  double? uploadProgress;
 
   @override
   void onInit() {
@@ -74,6 +112,7 @@ class VendorPortfolioController extends GetxController {
 
       if (meResponse != null && meResponse.isSuccess && meResponse.data != null) {
         final vendorMe = VendorMeModel.fromJson(meResponse.data as Map<String, dynamic>);
+        businessName = vendorMe.businessName ?? '';
         subcategories = vendorMe.activeSubscription?.selectedSubcategories ?? [];
         selectedSubcategoryId ??= subcategories.isEmpty ? null : subcategories.first.id;
       }
@@ -91,6 +130,50 @@ class VendorPortfolioController extends GetxController {
   void selectSubcategory(int subcategoryId) {
     selectedSubcategoryId = subcategoryId;
     update();
+  }
+
+  /// What the grid shows: only the work filed under the selected service.
+  ///
+  /// The chip row does double duty — it tags a new upload and it scopes
+  /// the grid — because those are the same question asked twice. A
+  /// vendor on a large plan can have forty subcategories, and one
+  /// undifferentiated wall of every photo they have ever uploaded is not
+  /// something they can check their AC-repair work in.
+  List<PortfolioMediaModel> get visibleMedia {
+    if (selectedSubcategoryId == null) {
+      return media;
+    }
+
+    return media
+        .where((item) => item.subcategoryId == selectedSubcategoryId)
+        .toList();
+  }
+
+  /// Name of the service the grid is currently scoped to, for the empty
+  /// state to name it rather than say "this service".
+  String? get selectedSubcategoryName {
+    for (final subcategory in subcategories) {
+      if (subcategory.id == selectedSubcategoryId) {
+        return subcategory.name;
+      }
+    }
+
+    return null;
+  }
+
+  /// Media count per subcategory id, so a chip can say what is behind it
+  /// before the vendor taps it.
+  Map<int, int> get mediaCountBySubcategory {
+    final counts = <int, int>{};
+
+    for (final item in media) {
+      final id = item.subcategoryId;
+      if (id != null) {
+        counts[id] = (counts[id] ?? 0) + 1;
+      }
+    }
+
+    return counts;
   }
 
   Future<void> pickAndUploadPhoto() async {
@@ -196,16 +279,30 @@ class VendorPortfolioController extends GetxController {
     }
 
     isUploading = true;
+    uploadingType = type;
+    uploadProgress = null;
     update();
 
     try {
-      Utils.showCircularProgressLottie(true);
+      // No full-screen Lottie here, unlike the other calls: an upload is
+      // the one request in this app slow enough that the vendor needs to
+      // see how far along it is, and a blocking overlay would hide the
+      // grid it is being added to.
       final response = await DataSource.instance.uploadPortfolioMediaAPI(
         type: type,
         subcategoryId: selectedSubcategoryId!,
         filePath: filePath,
+        onSendProgress: (sent, total) {
+          if (total <= 0) {
+            return;
+          }
+
+          // Back to indeterminate once the body is fully sent — what is
+          // left is server-side work with no progress to report.
+          uploadProgress = sent >= total ? null : sent / total;
+          update();
+        },
       );
-      Utils.showCircularProgressLottie(false);
 
       if (response == null || !response.isSuccess || response.data == null) {
         final fieldError = response?.fieldError('file') ??
@@ -222,13 +319,14 @@ class VendorPortfolioController extends GetxController {
       Utils.showToast(tr(StringRes.mediaUploaded));
       await fetchPortfolioAPI();
     } catch (e) {
-      Utils.showCircularProgressLottie(false);
       if (kDebugMode) {
         print('Upload media error $e');
       }
       Utils.showToast(tr(StringRes.uploadFailed), isError: true);
     } finally {
       isUploading = false;
+      uploadingType = null;
+      uploadProgress = null;
       update();
     }
   }

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\CategoryResource\RelationManagers;
 
 use App\Models\Subcategory;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
@@ -11,6 +12,7 @@ use Filament\Forms\Set;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -65,6 +67,20 @@ class SubcategoriesRelationManager extends RelationManager
                 ->directory('subcategory-icons')
                 ->maxSize(1024),
 
+            Select::make('service_type')
+                ->label('Service type')
+                ->options([
+                    'installation' => 'Installation',
+                    'repair' => 'Repair',
+                    'maintenance' => 'Maintenance',
+                ])
+                ->native(false)
+                ->helperText("Backs the filter chips on the customer app's subcategory screen. Leave blank if none fit."),
+
+            Toggle::make('is_popular')
+                ->label('Popular')
+                ->helperText('Shows a "Popular" badge and surfaces this service first on the customer app.'),
+
             Toggle::make('is_active')
                 ->default(true)
                 ->helperText('Inactive subcategories are hidden from the apps but keep their existing subscriptions.'),
@@ -88,6 +104,16 @@ class SubcategoriesRelationManager extends RelationManager
 
                 TextColumn::make('slug')
                     ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('service_type')
+                    ->label('Type')
+                    ->badge()
+                    ->placeholder('—')
+                    ->formatStateUsing(fn (?string $state): string => $state === null ? '—' : ucfirst($state)),
+
+                IconColumn::make('is_popular')
+                    ->label('Popular')
+                    ->boolean(),
 
                 TextColumn::make('in_use')
                     ->label('In use')

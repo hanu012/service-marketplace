@@ -47,6 +47,16 @@ class SalesmanVendorModel {
 
   bool get isSubscribed => quota != null;
 
+  /// An onboarding that was started and never finished: the details were
+  /// saved but no plan was ever bought.
+  ///
+  /// Draft is the only half-finished state the salesman flow can leave
+  /// behind. Subscribing takes a salesman-sold vendor straight from draft
+  /// to active in one transaction (SubscriptionService::subscribe), so
+  /// there is no "plan chosen but not paid" row to land on — which is why
+  /// resuming always means "go and pick a plan".
+  bool get isDraft => status == 'draft';
+
   /// Two letters for the avatar tile, from the business name.
   String get initials {
     final parts = (businessName ?? '')

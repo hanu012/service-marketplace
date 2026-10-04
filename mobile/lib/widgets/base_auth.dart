@@ -627,12 +627,17 @@ class AuthPrimaryButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.trailingIcon,
   });
 
   /// Translation key for the button text.
   final String label;
 
   final VoidCallback onPressed;
+
+  /// Optional arrow after the label, for a button that advances a flow
+  /// rather than simply submitting a form.
+  final IconData? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -656,16 +661,50 @@ class AuthPrimaryButton extends StatelessWidget {
           ),
         ],
       ),
-      child: BaseRaisedButton(
-        onPressed: onPressed,
-        buttonText: label,
-        buttonColor: ColorRes.transparent,
-        textColor: ColorRes.whiteColor,
-        borderRadius: _AuthTokens.buttonRadius,
-        buttonVerticalPadding: 18.getSize,
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-      ),
+      child: trailingIcon == null
+          ? BaseRaisedButton(
+              onPressed: onPressed,
+              buttonText: label,
+              buttonColor: ColorRes.transparent,
+              textColor: ColorRes.whiteColor,
+              borderRadius: _AuthTokens.buttonRadius,
+              buttonVerticalPadding: 18.getSize,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            )
+          // BaseRaisedButton takes a label string, not a child, so the
+          // icon variant is built here rather than by widening it.
+          : Material(
+              color: ColorRes.transparent,
+              child: InkWell(
+                onTap: onPressed,
+                borderRadius: BorderRadius.circular(_AuthTokens.buttonRadius),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18.getSize),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: BaseTextDMSans(
+                          text: label,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: ColorRes.whiteColor,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ).tr(),
+                      ),
+                      10.widthSpacer,
+                      Icon(
+                        trailingIcon,
+                        size: 18.getSize,
+                        color: ColorRes.whiteColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -728,6 +767,192 @@ class AuthFooterLink extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Gradient hero ─────────────────────────────────────────────────────────
+
+/// The violet block a task-style auth screen opens with: an icon tile, a
+/// headline and one line of explanation.
+///
+/// Used where the screen is a job to finish rather than a form to fill in
+/// — the forced password change, for one. The sign-in pair keep
+/// [AuthBrandHeader], which leads with the product rather than the task.
+class AuthGradientHero extends StatelessWidget {
+  const AuthGradientHero({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+
+  /// Optional control pinned to the top-right — a sign-out pill, usually.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            ColorRes.primaryColor,
+            ColorRes.primaryColorDark,
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // The faint ring in the top-right corner, clipped by the Stack.
+          Positioned(
+            right: -70.getSize,
+            top: -80.getSize,
+            child: Container(
+              height: 240.getSize,
+              width: 240.getSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                _AuthTokens.gutter,
+                14.getSize,
+                _AuthTokens.gutter,
+                24.getSize,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        height: 46.getSize,
+                        width: 46.getSize,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(14.getSize),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: Icon(icon, size: 21.getSize, color: Colors.white),
+                      ),
+                      const Spacer(),
+                      ?trailing,
+                    ],
+                  ),
+                  18.heightSpacer,
+                  BaseTextDMSans(
+                    text: title,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    textAlign: TextAlign.start,
+                  ),
+                  if (subtitle != null) ...[
+                    7.heightSpacer,
+                    BaseTextDMSans(
+                      text: subtitle!,
+                      fontSize: 13.5,
+                      color: Colors.white.withValues(alpha: 0.84),
+                      textAlign: TextAlign.start,
+                      maxLines: 3,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A titled card of live tick-offs — "your password should have ...".
+///
+/// The ticks reflect what is currently typed rather than being a static
+/// list, so the rule that is still failing is visible before the form is
+/// submitted rather than after it is rejected.
+class AuthChecklistCard extends StatelessWidget {
+  const AuthChecklistCard({
+    super.key,
+    required this.title,
+    required this.items,
+  });
+
+  final String title;
+
+  /// Label → whether it is currently satisfied.
+  final Map<String, bool> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.getSize),
+      decoration: BoxDecoration(
+        color: ColorRes.surfaceColor,
+        borderRadius: BorderRadius.circular(_AuthTokens.fieldRadius),
+        border: Border.all(color: ColorRes.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          BaseTextDMSans(
+            text: title.toUpperCase(),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.9,
+            color: ColorRes.grayColor,
+            textAlign: TextAlign.start,
+          ),
+          12.heightSpacer,
+          for (final entry in items.entries)
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.getSize),
+              child: Row(
+                children: [
+                  Icon(
+                    entry.value ? Icons.check_circle : Icons.check,
+                    size: 15.getSize,
+                    color: entry.value
+                        ? ColorRes.successColor
+                        : ColorRes.grayColor,
+                  ),
+                  9.widthSpacer,
+                  Expanded(
+                    child: BaseTextDMSans(
+                      text: entry.key,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: entry.value
+                          ? ColorRes.secondaryColor
+                          : ColorRes.grayColor,
+                      textAlign: TextAlign.start,
+                      maxLines: 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

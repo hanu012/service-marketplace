@@ -354,6 +354,134 @@ class VendorSearchEndpointTest extends TestCase
         $response->assertJsonPath('data.vendors.1.id', $unrated->id);
     }
 
+    // ── Sort chips (task 5.3's redesign) ────────────────────────────────
+
+    public function test_sort_nearest_orders_within_a_plan_tier_by_distance(): void
+    {
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+
+        $far = $this->vendorCovering($subcategory, $zone, $plan, [
+            'latitude' => 23.10, 'longitude' => 72.60,
+        ]);
+        $near = $this->vendorCovering($subcategory, $zone, $plan, [
+            'latitude' => 23.001, 'longitude' => 72.501,
+        ]);
+
+        $response = $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.0,
+            'longitude' => 72.5,
+            'sort' => 'nearest',
+        ]))->assertOk();
+
+        $response->assertJsonPath('data.vendors.0.id', $near->id);
+        $response->assertJsonPath('data.vendors.1.id', $far->id);
+
+        // distance_km rides along regardless of which chip is selected —
+        // "Top rated" still shows a distance, it just is not sorted by it.
+        $this->assertIsNumeric($response->json('data.vendors.0.distance_km'));
+    }
+
+    public function test_sort_new_orders_within_a_plan_tier_by_recency(): void
+    {
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+
+        $older = $this->vendorCovering($subcategory, $zone, $plan);
+        $older->forceFill(['created_at' => now()->subDays(10)])->save();
+
+        $newer = $this->vendorCovering($subcategory, $zone, $plan);
+        $newer->forceFill(['created_at' => now()->subDay()])->save();
+
+        $response = $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.02,
+            'longitude' => 72.52,
+            'sort' => 'new',
+        ]))->assertOk();
+
+        $response->assertJsonPath('data.vendors.0.id', $newer->id);
+        $response->assertJsonPath('data.vendors.1.id', $older->id);
+    }
+
+    public function test_plan_priority_still_wins_over_the_chosen_sort(): void
+    {
+        // A lower-tier vendor sitting right next to the customer must not
+        // outrank a higher-tier vendor further away — paid placement is
+        // the primary key regardless of which chip the customer taps.
+        $subcategory = $this->subcategory();
+        $zone = $this->leafZoneAt(23.0, 72.5);
+
+        $nearLowTier = $this->vendorCovering(
+            $subcategory,
+            $zone,
+            $this->planWithPriority(2),
+            ['latitude' => 23.001, 'longitude' => 72.501],
+        );
+        $farHighTier = $this->vendorCovering(
+            $subcategory,
+            $zone,
+            $this->planWithPriority(1),
+            ['latitude' => 23.10, 'longitude' => 72.60],
+        );
+
+        $response = $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.0,
+            'longitude' => 72.5,
+            'sort' => 'nearest',
+        ]))->assertOk();
+
+        $response->assertJsonPath('data.vendors.0.id', $farHighTier->id);
+        $response->assertJsonPath('data.vendors.1.id', $nearLowTier->id);
+    }
+
+    public function test_an_invalid_sort_value_is_rejected(): void
+    {
+        $subcategory = $this->subcategory();
+
+        $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $subcategory->id,
+            'latitude' => 23.0,
+            'longitude' => 72.5,
+            'sort' => 'cheapest',
+        ]))->assertStatus(422)
+            ->assertJsonStructure(['error' => ['fields' => ['sort']]]);
+    }
+
+    // ── Service chips ────────────────────────────────────────────────────
+
+    public function test_each_vendor_lists_every_subcategory_their_subscription_covers(): void
+    {
+        $category = Category::factory()->create();
+        $searched = Subcategory::factory()->for($category)->create(['name' => 'AC Gas Filling']);
+        $other = Subcategory::factory()->for($category)->create(['name' => 'AC Installation']);
+        $zone = $this->leafZoneAt(23.0, 72.5);
+        $plan = $this->planWithPriority(1);
+
+        $vendor = $this->vendorCovering($searched, $zone, $plan);
+
+        // vendorCovering only links the searched subcategory — add the
+        // second one to the same subscription directly.
+        SubscriptionItem::create([
+            'subscription_id' => $vendor->currentActiveSubscription()->id,
+            'item_type' => 'subcategory',
+            'item_id' => $other->id,
+        ]);
+
+        $response = $this->getJson('/api/vendors/search?'.http_build_query([
+            'subcategory_id' => $searched->id,
+            'latitude' => 23.02,
+            'longitude' => 72.52,
+        ]))->assertOk();
+
+        $names = collect($response->json('data.vendors.0.services'))->pluck('name')->all();
+        $this->assertEqualsCanonicalizing(['AC Gas Filling', 'AC Installation'], $names);
+    }
+
     // ── Pagination ───────────────────────────────────────────────────────
 
     public function test_results_paginate(): void

@@ -2,7 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
 import '../../../constants/flavor_config.dart';
-import '../email_verification_pending_module/email_verification_pending_view.dart';
+import '../account_verification_module/account_verification_view.dart';
 import '../vendor_landing_module/vendor_landing_view.dart';
 
 /// Vendor self-registration (SPEC section 3.1) — built fresh, not adapted
@@ -80,18 +80,18 @@ class VendorRegisterController extends GetxController {
       final data = response.data as Map<String, dynamic>;
       final userModel = UserModel.fromJson(data);
 
-      // A vendor is not handed a token until the email is verified (server
-      // enforces this — see AuthController::register()) — this is the
-      // expected path for every fresh vendor registration, not a failure.
-      if (userModel.authentication?.accessToken == null) {
-        // Keeps the email locally so the "check your email" screen can
-        // show it and resend against it, without signing the account in.
-        await Injector.setUserData(userModel);
-        Get.off(() => EmailVerificationPendingView(email: email));
+      await Injector.setUserData(userModel);
+
+      // Registration always returns a working token now, and the account is
+      // always Pending (SPEC section 3.1) — so this is the expected path for
+      // every fresh vendor registration, not a failure. The token exists so
+      // the verification screen can poll for the admin's decision and sign
+      // out; the server refuses everything else until approval.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
         return;
       }
 
-      await Injector.setUserData(userModel);
       Utils.transitionWithOffAll(const VendorLandingView());
     } catch (e) {
       Utils.showCircularProgressLottie(false);

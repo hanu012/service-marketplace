@@ -25,23 +25,74 @@ import 'base_text.dart';
 class ServiceTokens {
   const ServiceTokens._();
 
-  static const Color purple = Color(0xFF7C3AED);
-  static const Color purpleBright = Color(0xFF8B5CF6);
-  static const Color purpleDeep = Color(0xFF5B21B6);
-  static const Color bg = Color(0xFF0C0A16);
-  static const Color card = Color(0xFF171426);
-  static const Color card2 = Color(0xFF1E1A30);
-  static const Color stroke = Color(0xFF2A2540);
-  static const Color stroke2 = Color(0xFF332D4D);
-  static const Color text = Color(0xFFF5F3FF);
-  static const Color muted = Color(0xFF9E97BE);
-  static const Color muted2 = Color(0xFF7C7599);
-  static const Color green = Color(0xFF34D399);
+  /// teal-700. Buttons, active states, and accent text. Carries white at
+  /// 5.4:1 on a fill, and reads at 5.4:1 as text on [bg].
+  static const Color accent = Color(0xFF0F766E);
+
+  /// teal-500. Icons on tinted tiles, gradient ends, decorative accents.
+  /// Never behind white text and never as body text on a light surface —
+  /// 2.3:1 both ways. Use [accent] when it has to be read.
+  static const Color accentBright = Color(0xFF14B8A6);
+
+  /// teal-900. Deep gradient end and pressed states.
+  static const Color accentDeep = Color(0xFF134E4A);
+
+  static const Color bg = Color(0xFFF6F7F9);
+  static const Color card = Color(0xFFFFFFFF);
+
+  /// A recessed surface *inside* a card — image wells, inert tiles. Below
+  /// the card rather than above it, which is the reverse of the old dark
+  /// theme where every layer stepped lighter.
+  static const Color card2 = Color(0xFFF2F4F7);
+
+  static const Color stroke = Color(0xFFE4E7EC);
+
+  /// A stronger border, for controls that must read as outlined against a
+  /// white card where the hairline would disappear.
+  static const Color stroke2 = Color(0xFFD0D5DD);
+
+  static const Color text = Color(0xFF101828);
+  static const Color muted = Color(0xFF5B6475);
+
+  /// Chevrons, placeholder glyphs, and other furniture that should recede.
+  /// Too low-contrast for text — [muted] is the lightest readable tone.
+  static const Color muted2 = Color(0xFF98A2B3);
+
+  /// Inactive bottom-nav items. Darker than [muted2] because a nav label
+  /// is read, not merely seen.
+  static const Color navInactive = Color(0xFF667085);
+
+  /// Success. Kept clear of the teal accent so "approved" does not read as
+  /// just another branded element.
+  static const Color green = Color(0xFF12B76A);
+
+  /// Fill and border for the rounded accent tiles that front most rows.
+  static const Color tileFill = Color(0x1A0F766E);
+  static const Color tileBorder = Color(0x330F766E);
 
   /// Header gradient stops (CSS `linear-gradient(160deg, ...)`).
-  static const Color heroTop = Color(0xFF7C3AED);
-  static const Color heroMid = Color(0xFF6D28D9);
-  static const Color heroBottom = Color(0xFF3B1D74);
+  static const Color heroTop = Color(0xFF0E8F83);
+  static const Color heroMid = Color(0xFF0F766E);
+  static const Color heroBottom = Color(0xFF134E4A);
+
+  /// Cards sit on a near-white canvas, so they need a shadow to separate
+  /// from it — the dark theme could rely on a lighter fill alone.
+  static List<BoxShadow> get cardShadow => const [
+        BoxShadow(
+          color: Color(0x14101828),
+          blurRadius: 24,
+          offset: Offset(0, 8),
+        ),
+      ];
+
+  /// Stronger, for the search bar that floats over the header edge.
+  static List<BoxShadow> get searchShadow => const [
+        BoxShadow(
+          color: Color(0x24101828),
+          blurRadius: 30,
+          offset: Offset(0, 12),
+        ),
+      ];
 
   /// How far the search row lifts into the header's bottom edge. The header
   /// pads itself by the same amount so the overlap costs no layout height.
@@ -95,8 +146,8 @@ class ServicesHeader extends StatelessWidget {
                     center: const Alignment(0.7, -1.2),
                     radius: 1.2,
                     colors: [
-                      ServiceTokens.purpleBright.withValues(alpha: 0.55),
-                      ServiceTokens.purple.withValues(alpha: 0.0),
+                      ServiceTokens.accentBright.withValues(alpha: 0.55),
+                      ServiceTokens.accent.withValues(alpha: 0.0),
                     ],
                     stops: const [0.0, 0.55],
                   ),
@@ -344,7 +395,7 @@ class ServicesSearchBar extends StatelessWidget {
                   child: TextField(
                     controller: controller,
                     onChanged: onChanged,
-                    cursorColor: ServiceTokens.purple,
+                    cursorColor: ServiceTokens.accent,
                     style: TextStyle(
                       fontFamily: FontFamily.dmSans,
                       fontSize: 13.getFontSize,
@@ -377,15 +428,15 @@ class ServicesSearchBar extends StatelessWidget {
               height: 46.getSize,
               width: 46.getSize,
               decoration: BoxDecoration(
-                color: filterActive ? ServiceTokens.purple : ServiceTokens.card,
+                color: filterActive ? ServiceTokens.accent : ServiceTokens.card,
                 borderRadius: BorderRadius.circular(14.getSize),
                 border: Border.all(
-                  color: filterActive ? ServiceTokens.purple : ServiceTokens.stroke,
+                  color: filterActive ? ServiceTokens.accent : ServiceTokens.stroke,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: filterActive
-                        ? ServiceTokens.purple.withValues(alpha: 0.4)
+                        ? ServiceTokens.accent.withValues(alpha: 0.4)
                         : Colors.black.withValues(alpha: 0.3),
                     blurRadius: 24.getSize,
                     offset: Offset(0, 10.getSize),
@@ -429,15 +480,15 @@ class ServicesChip extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 17.getSize, vertical: 9.getSize),
           decoration: BoxDecoration(
-            color: selected ? ServiceTokens.purple : ServiceTokens.card,
+            color: selected ? ServiceTokens.accent : ServiceTokens.card,
             borderRadius: BorderRadius.circular(22.getSize),
             border: Border.all(
-              color: selected ? ServiceTokens.purple : ServiceTokens.stroke,
+              color: selected ? ServiceTokens.accent : ServiceTokens.stroke,
             ),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: ServiceTokens.purple.withValues(alpha: 0.42),
+                      color: ServiceTokens.accent.withValues(alpha: 0.42),
                       blurRadius: 16.getSize,
                       offset: Offset(0, 6.getSize),
                     ),
@@ -504,7 +555,7 @@ class ServicesStatTile extends StatelessWidget {
                     fontFamily: FontFamily.dmSans,
                     fontSize: 19.getFontSize,
                     fontWeight: FontWeight.w800,
-                    color: valueColor ?? Colors.white,
+                    color: valueColor ?? ServiceTokens.text,
                   ),
                 ),
                 if (suffix.isNotEmpty)
@@ -653,7 +704,7 @@ class ServicesGroupHead extends StatelessWidget {
                       text: title,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: ServiceTokens.text,
                       textAlign: TextAlign.start,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -704,12 +755,12 @@ class _IconTile extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            ServiceTokens.purpleBright.withValues(alpha: 0.28),
-            ServiceTokens.purple.withValues(alpha: 0.10),
+            ServiceTokens.accentBright.withValues(alpha: 0.28),
+            ServiceTokens.accent.withValues(alpha: 0.10),
           ],
         ),
         borderRadius: BorderRadius.circular(13.getSize),
-        border: Border.all(color: ServiceTokens.purpleBright.withValues(alpha: 0.25)),
+        border: Border.all(color: ServiceTokens.accentBright.withValues(alpha: 0.25)),
       ),
       child: iconUrl != null
           ? ClipRRect(
@@ -718,10 +769,10 @@ class _IconTile extends StatelessWidget {
                 iconUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) =>
-                    Icon(fallback, size: 21.getSize, color: ServiceTokens.purpleBright),
+                    Icon(fallback, size: 21.getSize, color: ServiceTokens.accentBright),
               ),
             )
-          : Icon(fallback, size: 21.getSize, color: ServiceTokens.purpleBright),
+          : Icon(fallback, size: 21.getSize, color: ServiceTokens.accentBright),
     );
   }
 }
@@ -788,8 +839,8 @@ class ServicesRow extends StatelessWidget {
         gradient: selected
             ? LinearGradient(
                 colors: [
-                  ServiceTokens.purple.withValues(alpha: 0.10),
-                  ServiceTokens.purple.withValues(alpha: 0.0),
+                  ServiceTokens.accent.withValues(alpha: 0.10),
+                  ServiceTokens.accent.withValues(alpha: 0.0),
                 ],
               )
             : null,
@@ -858,12 +909,12 @@ class ServicesCheckbox extends StatelessWidget {
         width: box,
         decoration: BoxDecoration(
           color: selected
-              ? (enabled ? ServiceTokens.purple : ServiceTokens.purple.withValues(alpha: 0.4))
+              ? (enabled ? ServiceTokens.accent : ServiceTokens.accent.withValues(alpha: 0.4))
               : ServiceTokens.card2,
           borderRadius: BorderRadius.circular(7.getSize),
           border: Border.all(
             color: selected
-                ? ServiceTokens.purple
+                ? ServiceTokens.accent
                 : (enabled
                     ? ServiceTokens.stroke2
                     : ServiceTokens.stroke2.withValues(alpha: 0.5)),
@@ -940,7 +991,7 @@ class ServicesCardFooter extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: actionEnabled
-                        ? ServiceTokens.purpleBright
+                        ? ServiceTokens.accentBright
                         : ServiceTokens.muted2.withValues(alpha: 0.6),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1032,12 +1083,12 @@ class ServicesFooter extends StatelessWidget {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [ServiceTokens.purpleBright, ServiceTokens.purple],
+                    colors: [ServiceTokens.accentBright, ServiceTokens.accent],
                   ),
                   borderRadius: BorderRadius.circular(16.getSize),
                   boxShadow: [
                     BoxShadow(
-                      color: ServiceTokens.purple.withValues(alpha: 0.5),
+                      color: ServiceTokens.accent.withValues(alpha: 0.5),
                       blurRadius: 30.getSize,
                       offset: Offset(0, 12.getSize),
                     ),

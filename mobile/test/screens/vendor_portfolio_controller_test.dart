@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -90,12 +91,18 @@ class _RecordingPortfolioDataSource extends DataSource {
     required String type,
     required int subcategoryId,
     required String filePath,
+    ProgressCallback? onSendProgress,
   }) async {
     capturedUploadFields = {
       'type': type,
       'subcategory_id': subcategoryId,
       'file_path': filePath,
     };
+
+    // Dio reports progress as the body goes out; replaying a couple of
+    // ticks here keeps the fake honest about what the real call does.
+    onSendProgress?.call(50, 100);
+    onSendProgress?.call(100, 100);
 
     if (!uploadSucceeds) {
       return CommonResponse.fromJson({

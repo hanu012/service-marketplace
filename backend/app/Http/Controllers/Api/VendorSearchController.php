@@ -6,9 +6,13 @@ use App\Http\Controllers\Concerns\ResolvesOptionalAuthUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Vendor\VendorSearchRequest;
 use App\Http\Resources\VendorSearchResource;
+use App\Models\Subcategory;
+use App\Models\Vendor;
 use App\Models\Zone;
 use App\Services\VendorSearchService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Public customer vendor search (SPEC section 4 item 4, task 5.3) — the
@@ -36,6 +40,7 @@ class VendorSearchController extends Controller
             lng: $request->hasPoint() ? (float) $request->input('longitude') : null,
             pincode: $request->filled('pincode') ? $request->string('pincode')->toString() : null,
             perPage: (int) $request->input('per_page', 15),
+            sort: $request->string('sort', VendorSearchService::SORT_RATING)->toString(),
         );
 
         $zone = $result['zone'];
@@ -51,6 +56,8 @@ class VendorSearchController extends Controller
                 'error' => null,
             ]);
         }
+
+        $this->attachServices($paginator->getCollection());
 
         return response()->json([
             'success' => true,
@@ -74,5 +81,49 @@ class VendorSearchController extends Controller
     private function zoneResource(Zone $zone): array
     {
         return ['id' => $zone->id, 'name' => $zone->name];
+    }
+
+    /**
+     * The service chips on each search card ("Gas Filling +2") — every
+     * subcategory the vendor's active subscription covers, not just the
+     * one searched for.
+     *
+     * One grouped query for the whole page rather than N — a page is at
+     * most 50 vendors (VendorSearchRequest's per_page ceiling), so this
+     * is one extra round trip regardless of list size, not one per row.
+     * Attached as a plain `services` attribute via setAttribute(), which
+     * VendorSearchResource reads straight through — it is not an Eloquent
+     * relation, it is the one query's result sliced back onto each model.
+     *
+     * @param  Collection<int, Vendor>  $vendors
+     */
+    private function attachServices(Collection $vendors): void
+    {
+        $vendorIds = $vendors->pluck('id');
+
+        if ($vendorIds->isEmpty()) {
+            return;
+        }
+
+        $rows = DB::table('subscription_items')
+            ->join('subscriptions', 'subscriptions.id', '=', 'subscription_items.subscription_id')
+            ->join('subcategories', 'subcategories.id', '=', 'subscription_items.item_id')
+            ->where('subscription_items.item_type', 'subcategory')
+            ->whereIn('subscriptions.vendor_id', $vendorIds)
+            ->whereNull('subscriptions.deleted_at')
+            ->select(['subscriptions.vendor_id', 'subcategories.id', 'subcategories.name'])
+            ->orderBy('subcategories.sort_order')
+            ->orderBy('subcategories.name')
+            ->get()
+            ->groupBy('vendor_id');
+
+        foreach ($vendors as $vendor) {
+            $services = ($rows->get($vendor->id) ?? collect())
+                ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])
+                ->values()
+                ->all();
+
+            $vendor->setAttribute('services', $services);
+        }
     }
 }

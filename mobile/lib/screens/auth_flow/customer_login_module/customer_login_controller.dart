@@ -1,12 +1,15 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../account_verification_module/account_verification_view.dart';
+import '../change_password_module/change_password_view.dart';
 import '../customer_home_module/customer_home_view.dart';
 
 /// Customer sign-in (SPEC section 4.1) — same shape as
-/// VendorLoginController, minus the unverified-email detour: customers
-/// aren't email-verification gated (AuthController::register()), so
-/// login always either succeeds or fails outright.
+/// VendorLoginController, including the approval gate: customers are no
+/// longer exempt the way they were from email verification, so an
+/// unapproved customer lands on the account-verification screen rather
+/// than home.
 class CustomerLoginController extends GetxController {
   TextEditingController emailController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
@@ -54,6 +57,23 @@ class CustomerLoginController extends GetxController {
 
       final userModel = UserModel.fromJson(response.data);
       await Injector.setUserData(userModel);
+
+      if (userModel.mustChangePassword) {
+        Utils.transitionWithOffAll(const ChangePasswordView());
+        return;
+      }
+
+      // Admin approval gates customers too (SPEC section 3.1) — not just
+      // vendors, the way the email check it replaced did.
+      //
+      // Checked after the forced password change, matching the server:
+      // RequirePasswordChange runs before RequireApprovedAccount, so a
+      // user carrying both would be sent to a pending screen whose every
+      // button the password gate would then refuse.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
+        return;
+      }
 
       Utils.transitionWithOffAll(const CustomerHomeView());
     } catch (e) {

@@ -31,8 +31,12 @@ class Customer extends Model
     protected function casts(): array
     {
         return [
-            'latitude' => 'decimal:7',
-            'longitude' => 'decimal:7',
+            // float, not decimal:7 — Laravel's decimal cast returns a STRING to
+            // preserve precision, so the API emitted "23.0300000" and the apps
+            // crashed casting it to num. A double holds 10 significant digits
+            // exactly, which is all a lat/lng of this scale needs.
+            'latitude' => 'float',
+            'longitude' => 'float',
         ];
     }
 

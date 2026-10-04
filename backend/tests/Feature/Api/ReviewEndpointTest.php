@@ -286,7 +286,7 @@ class ReviewEndpointTest extends TestCase
 
         $vendor->refresh();
         $this->assertSame(1, $vendor->rating_count);
-        $this->assertSame('4.00', $vendor->rating_avg);
+        $this->assertSame(4.0, $vendor->rating_avg);
     }
 
     public function test_two_reviews_average_correctly(): void
@@ -302,6 +302,6 @@ class ReviewEndpointTest extends TestCase
 
         $vendor->refresh();
         $this->assertSame(2, $vendor->rating_count);
-        $this->assertSame('4.00', $vendor->rating_avg);
+        $this->assertSame(4.0, $vendor->rating_avg);
     }
 }

@@ -35,7 +35,7 @@ class SalesmanProfileView extends StatelessWidget {
   Widget body(SalesmanProfileController controller) {
     if (controller.isLoading && controller.profile == null) {
       return const Center(
-        child: CupertinoActivityIndicator(color: ServiceTokens.purpleBright),
+        child: CupertinoActivityIndicator(color: ServiceTokens.accentBright),
       );
     }
 
@@ -47,7 +47,7 @@ class SalesmanProfileView extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: controller.fetchProfileAPI,
-      color: ServiceTokens.purple,
+      color: ServiceTokens.accent,
       backgroundColor: ServiceTokens.card,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -66,7 +66,10 @@ class SalesmanProfileView extends StatelessWidget {
                   statsCard(profile),
                   18.heightSpacer,
                   accountGroup(controller, profile),
-                  performanceGroup(profile),
+                  // The whole group is earnings: both of its rows are
+                  // hidden, so showing an empty titled section would just
+                  // look broken.
+                  if (Constants.showSalesmanEarnings) performanceGroup(profile),
                   preferencesGroup(controller, profile),
                   SalesmanWideButton(
                     label: tr(StringRes.logOutAction),
@@ -118,7 +121,7 @@ class SalesmanProfileView extends StatelessWidget {
             BaseRaisedButton(
               onPressed: controller.fetchProfileAPI,
               buttonText: StringRes.retry,
-              buttonColor: ServiceTokens.purple,
+              buttonColor: ServiceTokens.accent,
             ),
           ],
         ),
@@ -176,7 +179,7 @@ class SalesmanProfileView extends StatelessWidget {
               text: '${tr(StringRes.fieldSalesman)} · ${profile.employeeCode ?? ''}',
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFFE4DBFF),
+              color: const Color(0xFFCCFBF1),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -216,13 +219,15 @@ class SalesmanProfileView extends StatelessWidget {
                 tr(StringRes.subscribedLabel),
               ),
             ),
-            divider(),
-            Expanded(
-              child: statCell(
-                Utils.compactRupees(stats?.earningsPaise ?? 0),
-                tr(StringRes.earningsLabel),
+            if (Constants.showSalesmanEarnings) ...[
+              divider(),
+              Expanded(
+                child: statCell(
+                  Utils.compactRupees(stats?.earningsPaise ?? 0),
+                  tr(StringRes.earningsLabel),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -369,7 +374,7 @@ class SalesmanProfileView extends StatelessWidget {
                   onPressed: () => Get.back(),
                   child: BaseTextDMSans(
                     text: StringRes.cancel,
-                    color: ServiceTokens.purpleBright,
+                    color: ServiceTokens.accentBright,
                   ).tr(),
                 ),
               ],
@@ -437,13 +442,14 @@ class SalesmanPersonalDetailsView extends StatelessWidget {
                             tr(StringRes.assignedRegion),
                             profile.region ?? tr(StringRes.notSetLabel),
                           ),
-                          detailRow(
-                            tr(StringRes.commissionRateLabel),
-                            // Server-formatted: deriving this in the app is
-                            // how a salesman ends up seeing a rate that
-                            // disagrees with their actual payout.
-                            '${profile.commissionRatePercent ?? '0.00'}%',
-                          ),
+                          if (Constants.showSalesmanEarnings)
+                            detailRow(
+                              tr(StringRes.commissionRateLabel),
+                              // Server-formatted: deriving this in the app
+                              // is how a salesman ends up seeing a rate
+                              // that disagrees with their actual payout.
+                              '${profile.commissionRatePercent ?? '0.00'}%',
+                            ),
                         ],
                       ),
                     ),
