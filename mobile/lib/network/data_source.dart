@@ -66,7 +66,7 @@ class DataSource {
       // parsed rather than thrown.
       validateStatus: (status) => status != null && status < 500,
     ),
-  )..interceptors.add(
+  )..interceptors.addAll([
       InterceptorsWrapper(
         onRequest: (options, handler) {
           if (Injector.accessToken.isNotEmpty) {
@@ -76,7 +76,13 @@ class DataSource {
           return handler.next(options);
         },
       ),
-    );
+      if (kDebugMode)
+        LogInterceptor(
+          requestBody: true,
+          responseBody: true,
+          logPrint: (log) => debugPrint(log.toString()),
+        ),
+    ]);
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 

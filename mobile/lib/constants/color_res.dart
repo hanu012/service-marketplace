@@ -80,19 +80,17 @@ class ColorRes {
   static Color transparent = Colors.transparent;
 
   /// Swatch for ThemeData.primarySwatch.
-  static MaterialColor primaryMaterialColor = MaterialColor(
-    ColorRes.primaryColor.toARGB32(),
-    <int, Color>{
-      50: ColorRes.primaryColor.withValues(alpha: 0.1),
-      100: ColorRes.primaryColor.withValues(alpha: 0.2),
-      200: ColorRes.primaryColor.withValues(alpha: 0.3),
-      300: ColorRes.primaryColor.withValues(alpha: 0.4),
-      400: ColorRes.primaryColor.withValues(alpha: 0.5),
-      500: ColorRes.primaryColor.withValues(alpha: 0.6),
-      600: ColorRes.primaryColor.withValues(alpha: 0.7),
-      700: ColorRes.primaryColor.withValues(alpha: 0.8),
-      800: ColorRes.primaryColor.withValues(alpha: 0.9),
-      900: ColorRes.primaryColor,
-    },
-  );
+  static MaterialColor primaryMaterialColor =
+      MaterialColor(ColorRes.primaryColor.toARGB32(), <int, Color>{
+        50: ColorRes.primaryColor.withValues(alpha: 0.1),
+        100: ColorRes.primaryColor.withValues(alpha: 0.2),
+        200: ColorRes.primaryColor.withValues(alpha: 0.3),
+        300: ColorRes.primaryColor.withValues(alpha: 0.4),
+        400: ColorRes.primaryColor.withValues(alpha: 0.5),
+        500: ColorRes.primaryColor.withValues(alpha: 0.6),
+        600: ColorRes.primaryColor.withValues(alpha: 0.7),
+        700: ColorRes.primaryColor.withValues(alpha: 0.8),
+        800: ColorRes.primaryColor.withValues(alpha: 0.9),
+        900: ColorRes.primaryColor,
+      });
 }

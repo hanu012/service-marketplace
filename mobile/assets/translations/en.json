@@ -20,6 +20,7 @@
   "salesmanLoginTitle": "Sign in",
   "salesmanLoginDesc": "Use the email and temporary password your admin gave you.",
   "invalidCredentials": "Those credentials do not match our records.",
+  "wrongAppForAccount": "This account isn't for this app. Please use the correct app for your role.",
   "vendorLoginTitle": "Sign in",
   "vendorLoginDesc": "Sign in to manage your listing and leads.",
   "vendorRegisterTitle": "Create your account",

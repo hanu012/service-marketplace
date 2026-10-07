@@ -106,6 +106,7 @@ class StringRes {
   static const String salesmanLoginTitle = 'salesmanLoginTitle';
   static const String salesmanLoginDesc = 'salesmanLoginDesc';
   static const String invalidCredentials = 'invalidCredentials';
+  static const String wrongAppForAccount = 'wrongAppForAccount';
 
   // Vendor auth: login + self-registration (SPEC 1, 3.1)
   static const String vendorLoginTitle = 'vendorLoginTitle';

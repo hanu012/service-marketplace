@@ -61,6 +61,22 @@ class VendorLoginController extends GetxController {
       }
 
       UserModel userModel = UserModel.fromJson(commonResponse.data);
+
+      // The server's auth/login is shared across all three flavours and
+      // does not reject by role (it can't know which app is calling) — so
+      // a customer or salesman entering their own credentials here would
+      // otherwise sign in fine and only fail later, confusingly, on
+      // vendor-only endpoints. Reject it here instead.
+      if (userModel.role != 'vendor') {
+        if (userModel.authentication?.accessToken != null) {
+          await Injector.setAccessToken(userModel.authentication!.accessToken!);
+          await DataSource.instance.logoutAPI();
+        }
+        await Injector.clearUserData();
+        Utils.showToast(tr(StringRes.wrongAppForAccount), isError: true);
+        return;
+      }
+
       await Injector.setUserData(userModel);
 
       if (userModel.mustChangePassword) {
