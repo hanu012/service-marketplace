@@ -86,7 +86,10 @@ class VendorDetailController extends Controller
 
         $distanceKm = null;
 
-        if ($request->hasPoint()) {
+        // A vendor with no saved location has no distance — casting the
+        // missing coordinates to 0 measured from the Gulf of Guinea
+        // ("8237 km away").
+        if ($request->hasPoint() && $vendor->latitude !== null && $vendor->longitude !== null) {
             $distanceKm = GeoDistance::km(
                 (float) $request->input('latitude'),
                 (float) $request->input('longitude'),

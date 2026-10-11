@@ -192,6 +192,20 @@ class VendorDetailEndpointTest extends TestCase
         $this->assertLessThan(5, $distance); // ~1km at this latitude, sanity bound
     }
 
+    public function test_distance_is_null_when_the_vendor_has_no_location(): void
+    {
+        [$vendor] = $this->activeVendorWithSubscription();
+        $vendor->update(['latitude' => null, 'longitude' => null]);
+
+        // Used to measure from 0,0 and report thousands of kilometres.
+        $this->getJson("/api/vendors/{$vendor->id}/detail?".http_build_query([
+            'latitude' => 23.03,
+            'longitude' => 72.56,
+        ]))
+            ->assertOk()
+            ->assertJsonPath('data.distance_km', null);
+    }
+
     public function test_distance_is_null_when_no_point_is_given(): void
     {
         [$vendor] = $this->activeVendorWithSubscription();

@@ -346,16 +346,15 @@ class SalesmanVendorDetailView extends StatelessWidget {
       margin: EdgeInsets.only(bottom: 13.getSize),
       padding: EdgeInsets.all(16.getSize),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        // The header gradient — the one dark surface in the light theme,
+        // which is what makes the white text below correct here.
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            ServiceTokens.accentBright.withValues(alpha: 0.22),
-            ServiceTokens.accent.withValues(alpha: 0.06),
-          ],
+          colors: [ServiceTokens.heroTop, ServiceTokens.heroMid, ServiceTokens.heroBottom],
         ),
         borderRadius: BorderRadius.circular(18.getSize),
-        border: Border.all(color: ServiceTokens.accentBright.withValues(alpha: 0.30)),
+        boxShadow: ServiceTokens.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,7 +384,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
                       text: days < 0 ? '${-days}' : '$days',
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: days < 0 ? ColorRes.errorColor : Colors.white,
+                      color: days < 0 ? const Color(0xFFFECDCA) : Colors.white,
                     ),
                     BaseTextDMSans(
                       text: days < 0
@@ -393,7 +392,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
                           : tr(StringRes.daysLeft),
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF99F6E4),
+                      color: Colors.white.withValues(alpha: 0.82),
                     ),
                   ],
                 ),
@@ -409,7 +408,7 @@ class SalesmanVendorDetailView extends StatelessWidget {
             ].join(' · '),
             fontSize: 11.5,
             fontWeight: FontWeight.w500,
-            color: const Color(0xFF99F6E4),
+            color: Colors.white.withValues(alpha: 0.82),
             textAlign: TextAlign.start,
             maxLines: 2,
           ),

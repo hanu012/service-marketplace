@@ -264,15 +264,17 @@ class PlanPill extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 9.getSize, vertical: 3.getSize),
       decoration: BoxDecoration(
-        color: ServiceTokens.accentBright.withValues(alpha: 0.16),
+        // The accent tile from the light palette; the old teal-200 text
+        // was a dark-theme colour and vanished on a white card.
+        color: ServiceTokens.tileFill,
         borderRadius: BorderRadius.circular(20.getSize),
-        border: Border.all(color: ServiceTokens.accentBright.withValues(alpha: 0.30)),
+        border: Border.all(color: ServiceTokens.tileBorder),
       ),
       child: BaseTextDMSans(
         text: label,
-        fontSize: 10,
+        fontSize: 10.5,
         fontWeight: FontWeight.w700,
-        color: const Color(0xFF99F6E4),
+        color: ServiceTokens.accent,
         maxLines: 1,
       ),
     );

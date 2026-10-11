@@ -130,7 +130,7 @@ class MyVendorsView extends StatelessWidget {
             text: '$shown ${tr(StringRes.vendorsCountLabel)}',
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: ServiceTokens.text,
             textAlign: TextAlign.start,
             maxLines: 1,
           ),
@@ -148,7 +148,7 @@ class MyVendorsView extends StatelessWidget {
                     : Icons.filter_alt_outlined,
                 size: 15.getSize,
                 color: controller.unsubscribedOnly
-                    ? ServiceTokens.accentBright
+                    ? ServiceTokens.accent
                     : ServiceTokens.muted,
               ),
               5.widthSpacer,
@@ -159,7 +159,7 @@ class MyVendorsView extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: controller.unsubscribedOnly
-                    ? ServiceTokens.accentBright
+                    ? ServiceTokens.accent
                     : ServiceTokens.muted,
                 maxLines: 1,
               ),
@@ -200,7 +200,7 @@ class MyVendorsView extends StatelessWidget {
                       text: vendor.businessName ?? '',
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: ServiceTokens.text,
                       textAlign: TextAlign.start,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

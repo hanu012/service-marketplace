@@ -128,7 +128,7 @@ class SalesmanHomeView extends StatelessWidget {
                     fontFamily: FontFamily.dmSans,
                     fontSize: 12.5.getFontSize,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFFDCD2FF),
+                    color: Colors.white.withValues(alpha: 0.82),
                   ),
                 ),
                 TextSpan(
