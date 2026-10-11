@@ -546,10 +546,13 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 maxLines: 3,
               ),
               16.heightSpacer,
-              BaseRaisedButton(
-                onPressed: controller.isSubmittingReview ? null : _submit,
-                buttonText: StringRes.submitReview,
-                buttonColor: ColorRes.primaryColor,
+              SizedBox(
+                width: double.infinity,
+                child: BaseRaisedButton(
+                  onPressed: controller.isSubmittingReview ? null : _submit,
+                  buttonText: StringRes.submitReview,
+                  buttonColor: ColorRes.primaryColor,
+                ),
               ),
             ],
           );
@@ -628,10 +631,13 @@ class _ReportVendorSheetState extends State<_ReportVendorSheet> {
                 maxLines: 3,
               ),
               16.heightSpacer,
-              BaseRaisedButton(
-                onPressed: controller.isSubmittingReport ? null : _submit,
-                buttonText: StringRes.reportVendorSubmitButton,
-                buttonColor: ColorRes.errorColor,
+              SizedBox(
+                width: double.infinity,
+                child: BaseRaisedButton(
+                  onPressed: controller.isSubmittingReport ? null : _submit,
+                  buttonText: StringRes.reportVendorSubmitButton,
+                  buttonColor: ColorRes.errorColor,
+                ),
               ),
             ],
           );

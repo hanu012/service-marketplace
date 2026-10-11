@@ -251,6 +251,8 @@ class VendorServicesView extends StatelessWidget {
         // shared with the initial-subscribe flow, which does need it.
         vendorId: controller.vendorMe?.id ?? 0,
         plan: PlanModel(
+          // Shown in the footer hint ("… left in the Silver plan").
+          name: subscription.planName,
           maxCategories: subscription.categories?.max,
           maxSubcategories: subscription.subcategories?.max,
           maxZones: subscription.zones?.max,

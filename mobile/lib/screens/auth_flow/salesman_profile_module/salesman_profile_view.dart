@@ -198,13 +198,7 @@ class SalesmanProfileView extends StatelessWidget {
         color: ServiceTokens.card,
         borderRadius: BorderRadius.circular(18.getSize),
         border: Border.all(color: ServiceTokens.stroke),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 34.getSize,
-            offset: Offset(0, 14.getSize),
-          ),
-        ],
+        boxShadow: ServiceTokens.cardShadow,
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -250,7 +244,7 @@ class SalesmanProfileView extends StatelessWidget {
           text: value,
           fontSize: 19,
           fontWeight: FontWeight.w800,
-          color: Colors.white,
+          color: ServiceTokens.text,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

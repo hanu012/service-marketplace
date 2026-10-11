@@ -193,7 +193,7 @@ class ServicesHeader extends StatelessWidget {
                     fontSize: 12.5,
                     fontWeight: FontWeight.w400,
                     lineHeight: 1.45,
-                    color: const Color(0xFFDCD2FF),
+                    color: Colors.white.withValues(alpha: 0.82),
                     textAlign: TextAlign.start,
                     maxLines: 3,
                   ).tr(),
@@ -255,7 +255,7 @@ class _StepPill extends StatelessWidget {
         text: '${tr(StringRes.stepLabel)} $step ${tr(StringRes.of)} $totalSteps',
         fontSize: 11,
         fontWeight: FontWeight.w600,
-        color: const Color(0xFFD9CFFF),
+        color: Colors.white.withValues(alpha: 0.82),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -861,9 +861,13 @@ class ServicesRow extends StatelessWidget {
                     text: label,
                     fontSize: 13.5,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    // Rows sit on a white card (selected ones on a 10% teal
+                    // tint), so text is dark ink. A locked row that is
+                    // already bought stays readable; one blocked by the
+                    // plan cap is the placeholder grey.
                     color: !enabled
-                        ? ServiceTokens.muted2.withValues(alpha: 0.5)
-                        : (selected ? Colors.white : ServiceTokens.text),
+                        ? (selected ? ServiceTokens.muted : ServiceTokens.muted2)
+                        : ServiceTokens.text,
                     textAlign: TextAlign.start,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1055,7 +1059,9 @@ class ServicesFooter extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [ServiceTokens.bg, ServiceTokens.bg, Color(0x000C0A16)],
+          // Fades to a transparent page colour, not transparent black —
+          // the old dark-theme stop drew a grey band over the list.
+          colors: [ServiceTokens.bg, ServiceTokens.bg, Color(0x00F6F7F9)],
           stops: [0.0, 0.62, 1.0],
         ),
       ),
@@ -1065,9 +1071,9 @@ class ServicesFooter extends StatelessWidget {
           if (hint.isNotEmpty) ...[
             BaseTextDMSans(
               text: hint,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: ServiceTokens.muted2,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: ServiceTokens.muted,
               textAlign: TextAlign.center,
               maxLines: 2,
             ),
@@ -1082,15 +1088,17 @@ class ServicesFooter extends StatelessWidget {
                 height: 52.getSize,
                 width: double.infinity,
                 decoration: BoxDecoration(
+                  // teal-700 → teal-900: white labels need the darker
+                  // end; teal-500 is decorative only (2.3:1 on white).
                   gradient: const LinearGradient(
-                    colors: [ServiceTokens.accentBright, ServiceTokens.accent],
+                    colors: [ServiceTokens.accent, ServiceTokens.accentDeep],
                   ),
                   borderRadius: BorderRadius.circular(16.getSize),
                   boxShadow: [
                     BoxShadow(
-                      color: ServiceTokens.accent.withValues(alpha: 0.5),
-                      blurRadius: 30.getSize,
-                      offset: Offset(0, 12.getSize),
+                      color: ServiceTokens.accent.withValues(alpha: 0.25),
+                      blurRadius: 20.getSize,
+                      offset: Offset(0, 8.getSize),
                     ),
                   ],
                 ),

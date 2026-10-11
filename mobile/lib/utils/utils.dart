@@ -296,9 +296,11 @@ class Utils {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              // Stays dark end to end: the title and subtitle are white,
+              // and the old fade to the white surface swallowed them.
               colors: [
+                ColorRes.primaryColor,
                 ColorRes.primaryColorDark,
-                ColorRes.surfaceColor,
               ],
             ),
           ),
@@ -368,9 +370,9 @@ class Utils {
                 8.heightSpacer,
                 BaseTextDMSans(
                   text: desc,
-                  fontWeight: FontWeight.w300,
+                  fontWeight: FontWeight.w400,
                   fontSize: 14,
-                  color: ColorRes.grayColor,
+                  color: ColorRes.whiteColor.withValues(alpha: 0.85),
                   textAlign: TextAlign.start,
                   maxLines: 3,
                 ).tr(),
