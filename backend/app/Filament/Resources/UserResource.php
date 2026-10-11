@@ -8,12 +8,13 @@ use App\Enums\UserRole;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use App\Models\Vendor;
-use App\Services\VendorVerificationService;
+use App\Models\Zone;
 use Filament\Forms\Components\Actions as FormActions;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -21,6 +22,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
@@ -29,6 +31,7 @@ use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
 
@@ -154,10 +157,16 @@ class UserResource extends Resource
                         ->maxLength(255)
                         ->unique(table: 'salesmen', ignoreRecord: true),
 
-                    TextInput::make('region')
+                    // Stored as the zone's display name, not an id — the
+                    // column is free text the salesman app shows as-is.
+                    Select::make('region')
                         ->label('Assigned region')
-                        ->maxLength(255)
-                        ->helperText('Free text, e.g. "Ahmedabad · Gujarat". Shown on the salesman\'s profile screen.'),
+                        ->searchable()
+                        // The saved value, never the submitted state — taking
+                        // the state would let any typed region validate.
+                        ->options(fn (?Model $record): array => static::regionOptions($record?->getAttribute('region')))
+                        ->in(fn (?Model $record): array => array_keys(static::regionOptions($record?->getAttribute('region'))))
+                        ->helperText('Shown on the salesman\'s profile screen.'),
 
                     TextInput::make('phone')
                         ->tel()
@@ -165,17 +174,8 @@ class UserResource extends Resource
                         ->maxLength(20)
                         ->unique(table: 'salesmen', ignoreRecord: true),
 
-                    TextInput::make('monthly_target_paise')
-                        ->label('Monthly target (paise)')
-                        ->numeric()
-                        ->default(0)
-                        ->helperText('Integer paise. 100000 = ₹1,000.'),
-
-                    TextInput::make('commission_rate_bps')
-                        ->label('Commission rate (basis points)')
-                        ->numeric()
-                        ->default(0)
-                        ->helperText('1200 = 12.00%. Integer, so rates never drift.'),
+                    // Monthly target and commission rate are not edited here;
+                    // both columns default to 0.
 
                     Toggle::make('is_active')->default(true),
                 ]),
@@ -204,12 +204,15 @@ class UserResource extends Resource
                             'active' => 'Active',
                             'grace' => 'Grace',
                             'expired' => 'Expired',
+                            'pending_verification' => 'Pending verification',
+                            'rejected' => 'Rejected',
                         ])
                         // Draft: an admin-created vendor has no subscription
                         // yet, the same position the salesman flow is in
-                        // before payment. pending_verification is absent by
-                        // design — SPEC section 7 reserves it for
-                        // self-registered vendors.
+                        // before payment. pending_verification and rejected
+                        // are listed only so the field can display a vendor
+                        // already in those states — move them with the
+                        // Verification section's Approve/Reject, not here.
                         ->default('draft')
                         ->required(),
 
@@ -248,7 +251,8 @@ class UserResource extends Resource
      * Only rendered for a saved vendor user — on the create form there is
      * no vendor row to approve yet, and the role select can still change.
      *
-     * Both actions go through VendorVerificationService, the same path
+     * Approve/Reject only stage a decision; EditUser::afterSave() applies
+     * it on Save changes through VendorVerificationService, the same path
      * the API and the (still-registered) VendorVerificationResource use:
      * it moves the vendor's status AND the owning user's approval in one
      * transaction, so a second hand-rolled status write here would be the
@@ -269,15 +273,31 @@ class UserResource extends Resource
             ->visible(fn (?User $record): bool => $record?->vendor !== null)
             ->columns(2)
             ->schema([
+                // The decision is staged here and only applied by EditUser
+                // when the admin clicks Save changes; Cancel discards it.
+                // Hidden rather than disabled so it is not even part of the
+                // form state for someone who may not verify.
+                Hidden::make('vendor_decision')
+                    ->rules(['nullable', 'in:approve,reject'])
+                    ->visible(fn (): bool => Auth::user()?->can('verify', Vendor::class) ?? false),
+
+                Hidden::make('vendor_decision_reason')
+                    ->rules(['nullable', 'string', 'max:1000'])
+                    ->visible(fn (): bool => Auth::user()?->can('verify', Vendor::class) ?? false),
+
                 Placeholder::make('vendor_status')
                     ->label('Current status')
-                    ->content(fn (?User $record): string => match ($record?->vendor?->status) {
-                        'active' => 'Active — visible to customers',
-                        'rejected' => 'Rejected',
-                        'pending_verification' => 'Awaiting verification',
-                        'pending_payment' => 'Awaiting payment',
-                        'draft' => 'Draft — not submitted',
-                        default => '—',
+                    ->content(fn (Get $get, ?User $record): string => match ($get('vendor_decision')) {
+                        'approve' => 'Will be approved when you click Save changes',
+                        'reject' => 'Will be rejected when you click Save changes',
+                        default => match ($record?->vendor?->status) {
+                            'active' => 'Active — visible to customers',
+                            'rejected' => 'Rejected',
+                            'pending_verification' => 'Awaiting verification',
+                            'pending_payment' => 'Awaiting payment',
+                            'draft' => 'Draft — not submitted',
+                            default => '—',
+                        },
                     }),
 
                 Placeholder::make('vendor_id_proof')
@@ -289,8 +309,10 @@ class UserResource extends Resource
                 Placeholder::make('vendor_rejection_reason')
                     ->label('Rejection reason')
                     ->columnSpanFull()
-                    ->visible(fn (?User $record): bool => $record?->vendor?->status === 'rejected')
-                    ->content(fn (?User $record): string => $record?->vendor?->rejection_reason ?? '—'),
+                    ->visible(fn (Get $get, ?User $record): bool => static::effectiveVendorStatus($get, $record) === 'rejected')
+                    ->content(fn (Get $get, ?User $record): string => $get('vendor_decision') === 'reject'
+                        ? ($get('vendor_decision_reason') ?: '—')
+                        : ($record?->vendor?->rejection_reason ?? '—')),
 
                 // No link out to the vendor page here: the KYC documents
                 // and the plan/quota breakdown are the "More info" tab
@@ -306,14 +328,19 @@ class UserResource extends Resource
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Approve this vendor?')
-                    ->modalDescription('The vendor becomes active and visible to customers immediately, and the account is let into the app.')
-                    ->visible(fn (?User $record): bool => $record?->vendor !== null
-                        && $record->vendor->status !== 'active'
+                    ->modalDescription('Nothing changes until you click Save changes. Then the vendor becomes visible to customers and the account is let into the app.')
+                    ->visible(fn (Get $get, ?User $record): bool => $record?->vendor !== null
+                        && static::effectiveVendorStatus($get, $record) !== 'active'
                         && (Auth::user()?->can('verify', Vendor::class) ?? false))
-                    ->action(function (?User $record) {
-                        app(VendorVerificationService::class)->approve($record->vendor, Auth::user());
+                    ->action(function (Set $set) {
+                        $set('vendor_decision', 'approve');
+                        $set('vendor_decision_reason', null);
 
-                        Notification::make()->title('Vendor approved')->success()->send();
+                        Notification::make()
+                            ->title('Approval staged')
+                            ->body('Click Save changes to apply it.')
+                            ->warning()
+                            ->send();
                     }),
 
                 FormAction::make('rejectVendor')
@@ -328,17 +355,117 @@ class UserResource extends Resource
                             ->required()
                             ->maxLength(1000),
                     ])
-                    ->visible(fn (?User $record): bool => $record?->vendor !== null
-                        && $record->vendor->status !== 'rejected'
+                    ->visible(fn (Get $get, ?User $record): bool => $record?->vendor !== null
+                        && static::effectiveVendorStatus($get, $record) !== 'rejected'
                         && (Auth::user()?->can('verify', Vendor::class) ?? false))
-                    ->action(function (?User $record, array $data) {
-                        app(VendorVerificationService::class)
-                            ->reject($record->vendor, Auth::user(), $data['reason']);
+                    ->action(function (Set $set, array $data) {
+                        $set('vendor_decision', 'reject');
+                        $set('vendor_decision_reason', $data['reason']);
 
-                        Notification::make()->title('Vendor rejected')->danger()->send();
+                        Notification::make()
+                            ->title('Rejection staged')
+                            ->body('Click Save changes to apply it.')
+                            ->warning()
+                            ->send();
                     }),
                 ])->key('vendorDecision')->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * The one-time temporary password, with ways to hand it over: copy the
+     * password, or share a ready-to-send message with the login details.
+     *
+     * Copy and Share dispatch browser events handled by the script in
+     * resources/views/filament/hooks/credential-share.blade.php. Inline
+     * x-on:click code does not survive here: a sent notification is stored
+     * and rebuilt, which drops alpineClickHandler() and double-escapes any
+     * quotes in extraAttributes — the old copy button ran broken JS.
+     */
+    public static function sendTemporaryPasswordNotification(User $user, string $password, string $note): void
+    {
+        $where = match ($user->role) {
+            UserRole::Salesman => 'the Salesman app',
+            UserRole::Vendor => 'the Vendor app',
+            UserRole::Customer => 'the Customer app',
+            UserRole::Admin => 'the admin panel',
+        };
+
+        $message = "Hi {$user->name}, your Service Marketplace account is ready.\n\n"
+            ."Sign in to {$where} with:\n"
+            ."Email: {$user->email}\n"
+            ."Temporary password: {$password}\n\n"
+            .'You will be asked to set your own password the first time you sign in.';
+
+        Notification::make()
+            ->title('Temporary password for '.$user->name)
+            ->body($password."\n\n".$note)
+            ->persistent()
+            ->success()
+            ->actions([
+                \Filament\Notifications\Actions\Action::make('copy')
+                    ->label('Copy password')
+                    ->icon('heroicon-o-clipboard-document')
+                    ->color('gray')
+                    ->dispatch('copy-temporary-credential', ['text' => $password, 'confirmation' => 'Password copied']),
+
+                \Filament\Notifications\Actions\Action::make('whatsapp')
+                    ->label('Share on WhatsApp')
+                    ->icon('heroicon-o-chat-bubble-left-right')
+                    ->color('success')
+                    ->url('https://wa.me/?text='.rawurlencode($message), shouldOpenInNewTab: true),
+
+                // The browser's own share sheet (Telegram, Messages, email
+                // apps...). Where the browser has none, it copies the whole
+                // message instead so it can be pasted anywhere.
+                \Filament\Notifications\Actions\Action::make('share')
+                    ->label('Share…')
+                    ->icon('heroicon-o-share')
+                    ->color('gray')
+                    ->dispatch('share-temporary-credential', ['text' => $message]),
+            ])
+            ->send();
+    }
+
+    /**
+     * Active zones as "Area · City" (or just the city for a top-level zone),
+     * keyed by that same label. A region saved before this was a dropdown
+     * is kept as an option so editing the salesman does not blank it.
+     *
+     * @return array<string, string>
+     */
+    private static function regionOptions(?string $current): array
+    {
+        $options = Zone::query()
+            ->where('is_active', true)
+            ->with('parent')
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(function (Zone $zone): array {
+                $label = $zone->parent ? $zone->name.' · '.$zone->parent->name : $zone->name;
+
+                return [$label => $label];
+            })
+            ->all();
+
+        if (filled($current) && ! array_key_exists($current, $options)) {
+            $options = [$current => $current] + $options;
+        }
+
+        return $options;
+    }
+
+    /**
+     * The vendor's status as the page should present it: a staged but
+     * unsaved decision counts, so the buttons offer the opposite choice.
+     */
+    private static function effectiveVendorStatus(Get $get, ?User $record): ?string
+    {
+        return match ($get('vendor_decision')) {
+            'approve' => 'active',
+            'reject' => 'rejected',
+            default => $record?->vendor?->status,
+        };
     }
 
     public static function table(Table $table): Table
@@ -491,25 +618,11 @@ class UserResource extends Resource
                             'must_change_password' => true,
                         ])->save();
 
-                        Notification::make()
-                            ->title('Temporary password for '.$record->name)
-                            ->body(
-                                '**'.$temporary.'**'
-                                ."\n\nShare it with them now — this is the only time "
-                                .'it is shown.'
-                            )
-                            ->persistent()
-                            ->success()
-                            ->actions([
-                                \Filament\Notifications\Actions\Action::make('copy')
-                                    ->label('Copy password')
-                                    ->color('gray')
-                                    ->extraAttributes([
-                                        'x-on:click' => 'window.navigator.clipboard.writeText('
-                                            .json_encode($temporary).')',
-                                    ]),
-                            ])
-                            ->send();
+                        static::sendTemporaryPasswordNotification(
+                            $record,
+                            $temporary,
+                            'Share it with them now — this is the only time it is shown.',
+                        );
                     }),
             ])
             ->bulkActions([

@@ -19,9 +19,11 @@ class SelectZonesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetBuilder<SelectServicesController>(
+      // No dispose here: the services step created the controller and its
+      // GetBuilder removes it when that screen leaves. Deleting it here
+      // broke Back-then-Continue — the services step was still open, so
+      // the next push found no controller.
       init: Get.find<SelectServicesController>(),
-      // The flow ends here, so this is where the shared controller goes.
-      dispose: (_) => Get.delete<SelectServicesController>(),
       builder: (controller) {
         final picked = controller.selectedZoneIds.length;
 
@@ -176,6 +178,8 @@ class SelectZonesView extends StatelessWidget {
     // appearing inside one made it jump. A sheet also puts the choice
     // under the thumb, which matters for a salesman doing this standing
     // up in a shop.
+    controller.refreshFreeTrialCapAPI();
+
     Get.bottomSheet(
       paymentModeSheet(controller),
       isScrollControlled: true,

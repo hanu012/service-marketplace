@@ -35,6 +35,22 @@ class CmsPageEndpointTest extends TestCase
         $response->assertSee('<strong>your</strong>', false);
     }
 
+    public function test_a_page_is_shown_in_the_language_asked_for(): void
+    {
+        $this->page([
+            'title' => ['en' => 'Privacy Policy', 'gu' => 'ગોપનીયતા નીતિ'],
+            'body' => ['en' => '# Privacy Policy', 'gu' => '# ગોપનીયતા નીતિ'],
+        ]);
+
+        $this->get('/pages/privacy-policy?lang=gu')
+            ->assertOk()
+            ->assertSee('<h1>ગોપનીયતા નીતિ</h1>', false);
+
+        // No Hindi entered, and an unknown code: both fall back to English.
+        $this->get('/pages/privacy-policy?lang=hi')->assertSee('<h1>Privacy Policy</h1>', false);
+        $this->get('/pages/privacy-policy?lang=xx')->assertSee('<h1>Privacy Policy</h1>', false);
+    }
+
     public function test_an_unpublished_page_404s(): void
     {
         $this->page(['slug' => 'terms', 'is_published' => false]);

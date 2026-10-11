@@ -9,6 +9,7 @@ import '../constants/color_res.dart';
 import '../constants/constant.dart';
 import '../constants/pref_keys.dart';
 import '../constants/string_res.dart';
+import '../network/data_source.dart';
 import '../widgets/base_text.dart';
 import 'injector.dart';
 
@@ -20,6 +21,68 @@ class Utils {
   /// Navigator key, also used by [getSize] to tell whether the widget tree is
   /// mounted yet.
   static final GlobalKey<NavigatorState> key = GlobalKey<NavigatorState>();
+
+  /// The languages the admin has switched on (Settings → App). Falls back
+  /// to every bundled language if the server can't be reached, so the
+  /// picker still works offline.
+  static Future<List<String>> enabledLanguages() async {
+    try {
+      final response = await DataSource.instance.settingsAPI();
+      final codes = (response?.isSuccess ?? false)
+          ? (response!.data as Map<String, dynamic>)['enabled_languages']
+          : null;
+
+      if (codes is List) {
+        final enabled = codes
+            .whereType<String>()
+            .where(Constants.languages.containsKey)
+            .toList();
+
+        if (enabled.isNotEmpty) {
+          return enabled;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Enabled languages error $e');
+      }
+    }
+
+    return Constants.languages.keys.toList();
+  }
+
+  /// Moves the app back to English if the admin has since switched off
+  /// the language it is using. Called once at startup, off the critical
+  /// path — the app opens in the saved language either way.
+  static Future<void> enforceEnabledLanguage() async {
+    if (Injector.language == Constants.english) {
+      return;
+    }
+
+    final enabled = await enabledLanguages();
+
+    if (!enabled.contains(Injector.language)) {
+      await applyLanguage(Constants.english);
+    }
+  }
+
+  /// Switches every screen to [code] and remembers it on this device.
+  /// The device copy is the one that decides the next launch; the server
+  /// copy (PATCH user/preferences) is saved by the caller, best-effort.
+  static Future<void> applyLanguage(String code) async {
+    if (!Constants.languages.containsKey(code)) {
+      return;
+    }
+
+    await Injector.setLanguage(code);
+
+    final context = key.currentContext;
+    if (context != null && context.mounted) {
+      await context.setLocale(Locale(code));
+    }
+
+    await Get.updateLocale(Locale(code));
+  }
 
   static double getScreenWidth(BuildContext context) => Get.width;
 

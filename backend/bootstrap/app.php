@@ -3,6 +3,7 @@
 use App\Http\Middleware\RequireApprovedAccount;
 use App\Http\Middleware\RequirePasswordChange;
 use App\Http\Middleware\RolesMiddleware;
+use App\Http\Middleware\SetLocaleFromRequest;
 use App\Http\Responses\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -39,6 +40,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [
             RequirePasswordChange::class,
             RequireApprovedAccount::class,
+        ]);
+
+        // First, so even an early refusal is formed in the request's locale.
+        $middleware->api(prepend: [
+            SetLocaleFromRequest::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

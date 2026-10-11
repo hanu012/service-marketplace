@@ -5,8 +5,6 @@ namespace App\Filament\Resources\UserResource\Pages;
 use App\Enums\ApprovalStatus;
 use App\Filament\Resources\UserResource;
 use App\Models\User;
-use Filament\Notifications\Actions\Action;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Hash;
 
@@ -79,26 +77,12 @@ class CreateUser extends CreateRecord
         // — are not asked to change it immediately.
         $user->forceFill(['must_change_password' => true])->saveQuietly();
 
-        Notification::make()
-            ->title('Temporary password for '.$user->name)
-            ->body(
-                '**'.$this->temporaryPassword.'**'
-                ."\n\nShare it with them now — this is the only time it is shown. "
-                .'It cannot be recovered afterwards; a forgotten password is replaced by issuing a new temporary one from the Users list.'
-            )
-            ->persistent()
-            ->success()
-            ->actions([
-                Action::make('copy')
-                    ->label('Copy password')
-                    ->color('gray')
-                    // Filament ships the clipboard helper with its notifications.
-                    ->extraAttributes([
-                        'x-on:click' => 'window.navigator.clipboard.writeText('
-                            .json_encode($this->temporaryPassword).')',
-                    ]),
-            ])
-            ->send();
+        UserResource::sendTemporaryPasswordNotification(
+            $user,
+            $this->temporaryPassword,
+            'Share it with them now — this is the only time it is shown. '
+            .'It cannot be recovered afterwards; a forgotten password is replaced by issuing a new temporary one from the Users list.',
+        );
     }
 
     /**

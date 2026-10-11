@@ -110,16 +110,7 @@ class SelectServicesController extends GetxController {
           .map((e) => ZoneModel.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // Best-effort: a failed settings fetch keeps the safe 15-day fallback
-      // rather than blocking the whole screen over a non-essential value.
-      if (settingsResponse != null && settingsResponse.isSuccess && settingsResponse.data != null) {
-        final settingsData = settingsResponse.data as Map<String, dynamic>;
-        final fetchedMax = settingsData['free_trial_max_days'];
-        if (fetchedMax is int) {
-          freeTrialMaxDays = fetchedMax;
-          freeTrialDays = freeTrialDays.clamp(1, freeTrialMaxDays).toInt();
-        }
-      }
+      _applyFreeTrialCap(settingsResponse);
     } catch (e) {
       if (kDebugMode) {
         print('Fetch services master data error $e');
@@ -361,6 +352,35 @@ class SelectServicesController extends GetxController {
   void selectPaymentMode(String mode) {
     selectedPaymentMode = mode;
     update();
+  }
+
+  /// Re-reads the cap each time the payment sheet opens, so a change an
+  /// admin makes while the salesman is mid-flow shows up without leaving
+  /// the screen. The sheet is a GetBuilder, so it redraws when this lands.
+  Future<void> refreshFreeTrialCapAPI() async {
+    try {
+      _applyFreeTrialCap(await DataSource.instance.settingsAPI());
+      update();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Refresh free trial cap error $e');
+      }
+    }
+  }
+
+  /// Best-effort: a failed settings fetch keeps the last known cap (15 by
+  /// default) rather than blocking the screen over a non-essential value.
+  void _applyFreeTrialCap(CommonResponse? response) {
+    if (response == null || !response.isSuccess || response.data == null) {
+      return;
+    }
+
+    final fetchedMax = (response.data as Map<String, dynamic>)['free_trial_max_days'];
+
+    if (fetchedMax is int && fetchedMax > 0) {
+      freeTrialMaxDays = fetchedMax;
+      freeTrialDays = freeTrialDays.clamp(1, freeTrialMaxDays).toInt();
+    }
   }
 
   void setFreeTrialDays(int days) {

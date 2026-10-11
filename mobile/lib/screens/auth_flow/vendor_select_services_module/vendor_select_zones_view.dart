@@ -17,8 +17,11 @@ class VendorSelectZonesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetBuilder<VendorSelectServicesController>(
+      // No dispose here: the services step created the controller and its
+      // GetBuilder removes it when that screen leaves. Deleting it here
+      // broke Back-then-Continue — the services step was still open, so
+      // the next push found no controller.
       init: Get.find<VendorSelectServicesController>(),
-      dispose: (_) => Get.delete<VendorSelectServicesController>(),
       builder: (controller) {
         final picked = controller.selectedZoneIds.length;
 

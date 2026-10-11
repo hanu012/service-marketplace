@@ -315,10 +315,11 @@ class CustomerProfileView extends StatelessWidget {
         CustomerRow(
           icon: Icons.language,
           title: tr(StringRes.languageRow),
-          value: 'English',
-          // Only one locale ships today (assets/translations/en.json),
-          // so a picker would be a list of one.
-          onTap: () => Utils.showToast(tr(StringRes.comingSoon)),
+          value: Constants.languages[Injector.language] ?? 'English',
+          onTap: () => showLanguagePicker(
+            current: Injector.language,
+            onSelected: controller.changeLanguageAPI,
+          ),
         ),
         CustomerRow(
           icon: Icons.help_outline,

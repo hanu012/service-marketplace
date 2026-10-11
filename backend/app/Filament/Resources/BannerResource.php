@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Filament\Resources\BannerResource\Pages;
 use App\Models\Banner;
 use Filament\Forms\Components\DateTimePicker;
@@ -50,8 +51,11 @@ class BannerResource extends Resource
                 ])
                 ->required(),
 
-            TextInput::make('title')
-                ->maxLength(255),
+            TranslatableInput::make(
+                'title',
+                'Title',
+                fn (string $language) => TextInput::make($language)->maxLength(255),
+            )->columnSpanFull(),
 
             // Not a hardcoded enum — SPEC doesn't fix a list of
             // placement slots, and a new one shouldn't need a code

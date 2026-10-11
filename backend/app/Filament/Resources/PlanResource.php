@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Filament\Resources\PlanResource\Pages;
 use App\Models\Plan;
 use Filament\Forms\Components\Fieldset;
@@ -52,15 +53,21 @@ class PlanResource extends Resource
             Section::make('Plan')
                 ->columns(2)
                 ->schema([
-                    TextInput::make('name')
-                        ->required()
-                        ->maxLength(255)
-                        ->live(onBlur: true)
-                        ->afterStateUpdated(function (string $operation, $state, Set $set) {
-                            if ($operation === 'create') {
-                                $set('slug', Str::slug((string) $state));
-                            }
-                        }),
+                    TranslatableInput::make('name', 'Name', function (string $language) {
+                        $input = TextInput::make($language)->maxLength(255);
+
+                        if ($language !== 'en') {
+                            return $input;
+                        }
+
+                        return $input
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (string $operation, $state, Set $set) {
+                                if ($operation === 'create') {
+                                    $set('../slug', Str::slug((string) $state));
+                                }
+                            });
+                    }, required: true)->columnSpanFull(),
 
                     TextInput::make('slug')
                         ->required()
@@ -95,9 +102,11 @@ class PlanResource extends Resource
                         ->minValue(1)
                         ->helperText('The server computes end_date as start + this many days.'),
 
-                    Textarea::make('description')
-                        ->rows(2)
-                        ->columnSpanFull(),
+                    TranslatableInput::make(
+                        'description',
+                        'Description',
+                        fn (string $language) => Textarea::make($language)->rows(2),
+                    )->columnSpanFull(),
 
                     Toggle::make('is_active')
                         ->default(true)

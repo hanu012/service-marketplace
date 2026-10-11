@@ -39,6 +39,11 @@ class CommissionPayouts extends Page implements HasTable
 
     protected static string $view = 'filament.pages.commission-payouts';
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function canAccess(): bool
     {
         return Auth::user()?->can('viewAny', Commission::class) ?? false;

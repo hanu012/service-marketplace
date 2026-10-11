@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\RecordsAuditLog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 
 /**
  * CMS page (SPEC section 5 item 13): Terms, Privacy Policy, Refund
@@ -21,7 +22,11 @@ use Illuminate\Database\Eloquent\Model;
 class CmsPage extends Model
 {
     use HasFactory;
+    use HasTranslations;
     use RecordsAuditLog;
+
+    /** Stored per language (en / hi / gu); reads return the request locale, falling back to English. */
+    public array $translatable = ['title', 'body'];
 
     protected $fillable = [
         'slug',

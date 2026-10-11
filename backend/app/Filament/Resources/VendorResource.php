@@ -3,10 +3,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VendorResource\Pages;
+use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Vendor;
 use App\Support\ActiveSubscriptionSummary;
 use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
@@ -18,7 +20,10 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Number;
+use WeakMap;
 
 /**
  * All vendors, and what each one is actually subscribed to (SPEC section
@@ -144,7 +149,9 @@ class VendorResource extends Resource
 
                 SelectFilter::make('plan')
                     ->label('Plan')
-                    ->options(fn (): array => Plan::query()->orderBy('name')->pluck('name', 'id')->all())
+                    // get() before pluck(): a query-builder pluck returns
+                    // the raw per-language JSON rather than the name.
+                    ->options(fn (): array => Plan::query()->orderBy('name')->get()->pluck('name', 'id')->all())
                     ->query(fn (Builder $query, array $data): Builder => $query->when(
                         $data['value'] ?? null,
                         fn (Builder $q, $planId) => $q->whereHas(
@@ -231,6 +238,63 @@ class VendorResource extends Resource
                     ...static::quotaEntries(),
                 ]),
 
+            // One row per payment on the current subscription: the plan
+            // purchase first, then any add-ons bought on top of it.
+            Section::make('Payments')
+                ->description('How the current subscription was paid for.')
+                ->visible(fn (Vendor $record): bool => static::currentPayments($record)->isNotEmpty())
+                ->schema([
+                    RepeatableEntry::make('current_payments')
+                        ->hiddenLabel()
+                        ->state(fn (Vendor $record): Collection => static::currentPayments($record))
+                        ->columns(5)
+                        ->schema([
+                            TextEntry::make('for')
+                                ->label('For')
+                                ->state(fn (Payment $record): string => $record->id === (int) $record->subscription->payments()->min('id')
+                                    ? 'Plan'
+                                    : 'Add-on'),
+
+                            // Every entry here computes its value with state():
+                            // inside this RepeatableEntry a plain column read
+                            // ('mode', 'amount_paise') renders empty.
+                            TextEntry::make('payment_mode')
+                                ->label('Payment method')
+                                ->badge()
+                                ->state(fn (Payment $record): string => match ($record->mode) {
+                                    'cash' => 'Cash',
+                                    'online' => 'Online',
+                                    'free' => 'Free trial'.($record->subscription->free_trial_days
+                                        ? ' ('.$record->subscription->free_trial_days.' days)'
+                                        : ''),
+                                    default => ucfirst((string) $record->mode),
+                                })
+                                ->color(fn (Payment $record): string => match ($record->mode) {
+                                    'free' => 'gray',
+                                    'cash' => 'warning',
+                                    default => 'success',
+                                }),
+
+                            TextEntry::make('payment_amount')
+                                ->label('Amount')
+                                ->state(fn (Payment $record): string => Number::currency($record->amount_paise / 100, 'INR')),
+
+                            TextEntry::make('payment_status')
+                                ->label('Status')
+                                ->state(fn (Payment $record): string => match (true) {
+                                    $record->mode === 'free' => 'No payment',
+                                    $record->mode === 'online' => 'Paid online',
+                                    $record->admin_verified_at !== null => 'Cash verified '.$record->admin_verified_at->format('d M Y'),
+                                    default => 'Cash collected — awaiting admin verification',
+                                }),
+
+                            TextEntry::make('collected_by')
+                                ->label('Collected by')
+                                ->state(fn (Payment $record): ?string => $record->collectedBySalesman?->user?->name)
+                                ->placeholder('—'),
+                        ]),
+                ]),
+
             Section::make('Selected services and zones')
                 ->description('What this vendor actually picked, within the quota above.')
                 ->schema([
@@ -296,6 +360,33 @@ class VendorResource extends Resource
     /**
      * @return array<string, mixed>|null
      */
+    /**
+     * Keyed by the record object, so it lives exactly as long as one render
+     * — unlike an id-keyed static array, it cannot serve stale rows to a
+     * later request or test that reuses the id.
+     *
+     * @var WeakMap<Vendor, Collection<int, Payment>>|null
+     */
+    private static ?WeakMap $paymentsCache = null;
+
+    /**
+     * Payments on the vendor's current subscription, oldest first, so the
+     * first row is the plan purchase.
+     *
+     * @return Collection<int, Payment>
+     */
+    private static function currentPayments(Vendor $vendor): Collection
+    {
+        static::$paymentsCache ??= new WeakMap();
+
+        return static::$paymentsCache[$vendor] ??= $vendor->currentActiveSubscription()
+            ?->payments()
+            ->with(['subscription', 'collectedBySalesman.user'])
+            ->orderBy('id')
+            ->get()
+            ?? new Collection();
+    }
+
     private static function summary(Vendor $vendor): ?array
     {
         return static::$summaryCache[$vendor->id] ??= ActiveSubscriptionSummary::for($vendor);

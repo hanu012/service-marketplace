@@ -10,6 +10,7 @@ use App\Models\Subcategory;
 use App\Models\Vendor;
 use App\Models\Zone;
 use App\Services\VendorSearchService;
+use App\Support\Languages;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -119,7 +120,8 @@ class VendorSearchController extends Controller
 
         foreach ($vendors as $vendor) {
             $services = ($rows->get($vendor->id) ?? collect())
-                ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])
+                // Query-builder rows carry the raw per-language JSON.
+                ->map(fn ($row) => ['id' => $row->id, 'name' => Languages::pick($row->name)])
                 ->values()
                 ->all();
 

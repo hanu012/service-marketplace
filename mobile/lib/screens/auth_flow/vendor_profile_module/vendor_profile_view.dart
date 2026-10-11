@@ -344,9 +344,11 @@ class VendorProfileView extends StatelessWidget {
         VendorSettingsRow(
           icon: Icons.language,
           title: tr(StringRes.languageRow),
-          // English is the only bundled locale, so this reports rather
-          // than offers a choice that would have nothing to switch to.
-          trailing: const VendorRowValue(value: 'English'),
+          trailing: VendorRowValue(value: Constants.languages[Injector.language] ?? 'English'),
+          onTap: () => showLanguagePicker(
+            current: Injector.language,
+            onSelected: controller.changeLanguageAPI,
+          ),
         ),
         VendorSettingsRow(
           icon: Icons.help_outline,

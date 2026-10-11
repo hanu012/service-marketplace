@@ -8,14 +8,17 @@ use App\Filament\Resources\VendorResource\Pages\ListVendors;
 use App\Filament\Resources\VendorResource\Pages\ViewVendor;
 use App\Models\Category;
 use App\Models\Plan;
+use App\Models\Salesman;
 use App\Models\Subcategory;
 use App\Models\Subscription;
 use App\Models\SubscriptionItem;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Zone;
+use App\Services\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Number;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -97,6 +100,49 @@ class VendorResourceTest extends TestCase
         }
 
         return $vendor;
+    }
+
+    public function test_the_view_page_shows_how_the_subscription_was_paid(): void
+    {
+        $vendor = $this->subscribedVendor();
+        $subscription = $vendor->currentActiveSubscription();
+
+        $salesmanUser = User::factory()->role(UserRole::Salesman)->create(['name' => 'Riya Patel']);
+        $salesman = Salesman::create([
+            'user_id' => $salesmanUser->id,
+            'employee_code' => 'EMP-PAY',
+            'phone' => '9900000010',
+        ]);
+
+        $payments = app(PaymentService::class);
+        $payments->payViaCash($subscription, 99900, $salesman);
+        $payments->payOnline($subscription, 25000);
+
+        Livewire::test(ViewVendor::class, ['record' => $vendor->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Payments')
+            ->assertSee('Plan')
+            ->assertSee('Add-on')
+            ->assertSee('Cash')
+            ->assertSee('Online')
+            ->assertSee(Number::currency(999, 'INR'))
+            ->assertSee(Number::currency(250, 'INR'))
+            ->assertSee('Cash collected — awaiting admin verification')
+            ->assertSee('Paid online')
+            ->assertSee('Riya Patel');
+    }
+
+    public function test_a_free_trial_shows_its_length_and_no_payment(): void
+    {
+        $vendor = $this->subscribedVendor();
+        $subscription = $vendor->currentActiveSubscription();
+        $subscription->forceFill(['free_trial_days' => 12])->save();
+
+        app(PaymentService::class)->recordFreeTrial($subscription);
+
+        Livewire::test(ViewVendor::class, ['record' => $vendor->getKey()])
+            ->assertSee('Free trial (12 days)')
+            ->assertSee('No payment');
     }
 
     public function test_the_list_page_renders_every_vendor_regardless_of_status(): void

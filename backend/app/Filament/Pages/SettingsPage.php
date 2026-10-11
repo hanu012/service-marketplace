@@ -3,6 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Models\Setting;
+use App\Support\Languages;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -60,6 +62,7 @@ class SettingsPage extends Page implements HasForms
         'grace_period_days',
         'force_update_version',
         'maintenance_mode',
+        'enabled_languages',
     ];
 
     public static function canAccess(): bool
@@ -75,6 +78,7 @@ class SettingsPage extends Page implements HasForms
             'grace_period_days' => Setting::get('grace_period_days'),
             'force_update_version' => Setting::get('force_update_version'),
             'maintenance_mode' => Setting::get('maintenance_mode', false),
+            'enabled_languages' => Languages::enabled(),
         ]);
     }
 
@@ -107,7 +111,7 @@ class SettingsPage extends Page implements HasForms
                     ->columns(3),
 
                 Section::make('App')
-                    ->description('Neither field below is enforced anywhere yet — no API middleware gate and no Flutter screen reads either one. Editable here ahead of that work, not functional yet.')
+                    ->description('Minimum app version and maintenance mode are not enforced anywhere yet — editable here ahead of that work. Enabled languages is live.')
                     ->schema([
                         TextInput::make('force_update_version')
                             ->label('Minimum app version')
@@ -119,6 +123,16 @@ class SettingsPage extends Page implements HasForms
                         Toggle::make('maintenance_mode')
                             ->label('Maintenance mode')
                             ->helperText('Not enforced by any app yet.'),
+
+                        CheckboxList::make('enabled_languages')
+                            ->label('Enabled languages')
+                            ->options(Languages::SUPPORTED)
+                            // English is the fallback for every missing
+                            // translation, so it cannot be switched off.
+                            ->disableOptionWhen(fn (string $value): bool => $value === Languages::ENGLISH)
+                            ->columns(3)
+                            ->helperText('Offered in each app under Profile → Language. English is always on. Someone using a language you switch off is moved back to English.')
+                            ->columnSpanFull(),
                     ])
                     ->columns(2),
             ])
@@ -163,6 +177,10 @@ class SettingsPage extends Page implements HasForms
     {
         if ($type === 'boolean') {
             return $value ? 'true' : 'false';
+        }
+
+        if ($type === 'json') {
+            return json_encode(array_values((array) $value));
         }
 
         return $value === null ? null : (string) $value;

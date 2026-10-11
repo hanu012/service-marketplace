@@ -36,7 +36,7 @@ class PlanResourceTest extends TestCase
         // Quota fields sit under a `quota` state path: Fieldset->relationship()
         // calls statePath($name), so they are nested rather than flat.
         return array_merge([
-            'name' => 'Growth',
+            'name' => ['en' => 'Growth'],
             'slug' => 'growth',
             'price_rupees' => '999.00',
             'duration_days' => 365,

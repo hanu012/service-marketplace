@@ -69,6 +69,10 @@ class DataSource {
   )..interceptors.addAll([
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // The server returns category, plan and banner names in this
+          // language, falling back to English where none is entered.
+          options.headers[HttpHeaders.acceptLanguageHeader] = Injector.language;
+
           if (Injector.accessToken.isNotEmpty) {
             options.headers[HttpHeaders.authorizationHeader] =
                 'Bearer ${Injector.accessToken}';

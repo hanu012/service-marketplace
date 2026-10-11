@@ -275,5 +275,52 @@ void main() {
       expect(controller.selectedSubcategoryIds, isNotEmpty);
       expect(tester.takeException(), isNull);
     });
+
+    // The zones step used to delete the shared controller on its way out,
+    // while the services step was still open beneath it — so going Back and
+    // pressing Continue again crashed with "controller not found".
+    for (final entry in screens().entries) {
+      testWidgets('${entry.key}: Back from zones then Continue again works',
+          (tester) async {
+        FlavorConfig.initialize(entry.value.$1);
+        DataSource.instance =
+            _FakeMasterDataSource(categories: categories, zones: zones);
+        useSurface(tester);
+
+        await tester.pumpWidget(GetMaterialApp(home: entry.value.$2));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final isSalesman = entry.key == 'SelectServicesView';
+        if (isSalesman) {
+          final c = Get.find<SelectServicesController>();
+          c.toggleCategory(c.categories.first);
+        } else {
+          final c = Get.find<VendorSelectServicesController>();
+          c.toggleCategory(c.categories.first);
+        }
+        await tester.pump();
+
+        Future<void> continueToZones() async {
+          await tester.tap(find.byType(ServicesFooter));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+        }
+
+        final zonesStep = isSalesman ? SelectZonesView : VendorSelectZonesView;
+
+        await continueToZones();
+        expect(find.byType(zonesStep), findsOneWidget);
+
+        Get.back();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byType(zonesStep), findsNothing);
+
+        await continueToZones();
+        expect(find.byType(zonesStep), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

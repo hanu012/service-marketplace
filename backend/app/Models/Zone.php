@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\PreventsDeletionWhileSubscribed;
+use App\Support\Languages;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -170,7 +171,9 @@ class Zone extends Model
                 'subscriptions.end_date',
             ])
             ->orderBy('vendors.business_name')
-            ->get();
+            ->get()
+            // plans.name is stored per language; these are raw rows.
+            ->each(fn (object $row) => $row->plan_name = Languages::pick($row->plan_name));
     }
 
     public function scopeActive($query)

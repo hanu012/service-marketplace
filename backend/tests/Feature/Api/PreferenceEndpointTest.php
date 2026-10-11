@@ -51,6 +51,20 @@ class PreferenceEndpointTest extends TestCase
         $this->assertFalse($user->fresh()->enable_notification);
     }
 
+    public function test_hindi_and_gujarati_can_be_chosen(): void
+    {
+        $user = User::factory()->role(UserRole::Customer)->create();
+
+        foreach (['hi', 'gu', 'en'] as $language) {
+            $this->actingAs($user)
+                ->patchJson('/api/user/preferences', ['language' => $language])
+                ->assertOk()
+                ->assertJsonPath('data.language', $language);
+
+            $this->assertSame($language, $user->fresh()->language);
+        }
+    }
+
     public function test_an_unsupported_language_is_rejected(): void
     {
         // Accepting an arbitrary tag would let a client set a locale that

@@ -43,6 +43,11 @@ class LeadsAnalytics extends Page implements HasTable
 
     protected static string $view = 'filament.pages.leads-analytics';
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function canAccess(): bool
     {
         return Auth::user()?->can('viewAny', Lead::class) ?? false;
@@ -105,7 +110,9 @@ class LeadsAnalytics extends Page implements HasTable
                 // relationship() filter.
                 SelectFilter::make('category_id')
                     ->label('Category')
-                    ->options(fn () => Category::query()->orderBy('name')->pluck('name', 'id'))
+                    // get() before pluck(): a query-builder pluck returns
+                    // the raw per-language JSON rather than the name.
+                    ->options(fn () => Category::query()->orderBy('name')->get()->pluck('name', 'id'))
                     ->query(function (Builder $query, array $data) {
                         if (blank($data['value'] ?? null)) {
                             return $query;

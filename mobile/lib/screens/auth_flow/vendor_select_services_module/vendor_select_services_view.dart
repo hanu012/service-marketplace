@@ -44,8 +44,9 @@ class VendorSelectServicesView extends StatelessWidget {
         existingSubcategoryIds: existingSubcategoryIds,
         existingZoneIds: existingZoneIds,
       ),
-      // Deliberately NOT disposed here — the zones step reads this same
-      // controller and tears it down when the flow ends.
+      // No explicit dispose: the zones step reads this same controller
+      // while this screen stays beneath it. As the creator, this
+      // GetBuilder auto-removes it once this screen leaves the stack.
       builder: (controller) {
         final picked = controller.selectedSubcategoryIds.length;
 

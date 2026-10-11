@@ -78,6 +78,17 @@ class VendorVerificationServiceTest extends TestCase
         );
     }
 
+    public function test_approving_a_rejected_vendor_without_a_subscription_returns_them_to_draft(): void
+    {
+        $vendor = $this->vendor('rejected');
+        $admin = User::factory()->role(UserRole::Admin)->create();
+
+        $this->service()->approve($vendor, $admin);
+
+        $this->assertSame('draft', $vendor->fresh()->status);
+        $this->assertTrue($vendor->user->fresh()->isApproved());
+    }
+
     public function test_rejecting_marks_the_vendor_and_the_account_rejected(): void
     {
         $vendor = $this->vendor('pending_verification');

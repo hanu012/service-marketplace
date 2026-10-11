@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../customer_home_module/customer_home_controller.dart';
 import '../../../utils/place_service.dart';
 import '../customer_login_module/customer_login_view.dart';
 import '../customer_select_location_module/customer_select_location_view.dart';
@@ -82,6 +83,29 @@ class CustomerProfileController extends GetxController {
     Injector.enableNotification = value;
     Injector.prefs?.setBool(PrefKeys.enableNotification, value);
     update();
+  }
+
+  /// Applies immediately on this device; the server copy is best-effort,
+  /// so a failed save never undoes the language the user can see.
+  Future<void> changeLanguageAPI(String code) async {
+    await Utils.applyLanguage(code);
+    update();
+
+    // Category and vendor names come from the server in the request's
+    // language, so the home tab already on screen has to fetch them again.
+    if (Get.isRegistered<CustomerHomeController>()) {
+      final home = Get.find<CustomerHomeController>();
+      home.fetchCategoriesAPI();
+      home.fetchNearbyVendorsAPI();
+    }
+
+    try {
+      await DataSource.instance.updatePreferencesAPI(body: {'language': code});
+    } catch (e) {
+      if (kDebugMode) {
+        print('Save language error $e');
+      }
+    }
   }
 
   Future<void> logoutAPI() async {

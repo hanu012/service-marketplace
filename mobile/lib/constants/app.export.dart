@@ -35,6 +35,7 @@ export '../utils/utils.dart';
 export '../widgets/base_auth.dart';
 export '../widgets/base_button.dart';
 export '../widgets/base_customer.dart';
+export '../widgets/base_language.dart';
 export '../widgets/base_salesman.dart';
 export '../widgets/base_services.dart';
 export '../widgets/base_text.dart';

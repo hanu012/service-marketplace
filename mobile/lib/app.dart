@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 
 import 'constants/app.export.dart';
@@ -31,12 +33,25 @@ Future<void> bootstrap(FlavorConfig config) async {
 
   runApp(
     EasyLocalization(
-      supportedLocales: const [Locale('en')],
+      supportedLocales: [
+        for (final code in Constants.languages.keys) Locale(code),
+      ],
       path: 'assets/translations',
-      fallbackLocale: const Locale('en'),
+      fallbackLocale: const Locale(Constants.english),
+      // Injector owns the saved choice (PrefKeys.language), so the
+      // package's own copy is turned off rather than kept in sync.
+      saveLocale: false,
+      startLocale: Locale(
+        Constants.languages.containsKey(Injector.language)
+            ? Injector.language
+            : Constants.english,
+      ),
       child: const ServiceMarketplaceApp(),
     ),
   );
+
+  // Not awaited: the app opens in the saved language straight away.
+  unawaited(Utils.enforceEnabledLanguage());
 }
 
 class ServiceMarketplaceApp extends StatelessWidget {

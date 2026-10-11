@@ -66,6 +66,18 @@ class SettingEndpointTest extends TestCase
 
         $response = $this->getJson('/api/settings')->assertOk();
 
-        $this->assertSame(['free_trial_max_days'], array_keys($response->json('data')));
+        $this->assertSame(['free_trial_max_days', 'enabled_languages'], array_keys($response->json('data')));
+    }
+
+    public function test_enabled_languages_always_include_english(): void
+    {
+        // Saved with Gujarati only — English is the fallback for every
+        // missing translation, so it is added back rather than dropped.
+        // The row itself comes from a migration, hence update not create.
+        Setting::query()->where('key', 'enabled_languages')->update(['value' => '["gu"]']);
+
+        $this->getJson('/api/settings')
+            ->assertOk()
+            ->assertJsonPath('data.enabled_languages', ['en', 'gu']);
     }
 }

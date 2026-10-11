@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../vendor_dashboard_module/vendor_dashboard_controller.dart';
 import '../vendor_login_module/vendor_login_view.dart';
 
 /// The vendor's own profile screen (SPEC section 3.2 / section 2.5's
@@ -167,6 +168,27 @@ class VendorProfileController extends GetxController {
     } finally {
       isSavingPreference = false;
       update();
+    }
+  }
+
+  /// Applies immediately on this device; the server copy is best-effort,
+  /// so a failed save never undoes the language the user can see.
+  Future<void> changeLanguageAPI(String code) async {
+    await Utils.applyLanguage(code);
+    update();
+
+    // Plan and service names come from the server in the request's
+    // language, so the dashboard already on screen has to fetch again.
+    if (Get.isRegistered<VendorDashboardController>()) {
+      Get.find<VendorDashboardController>().fetchVendorMeAPI();
+    }
+
+    try {
+      await DataSource.instance.updatePreferencesAPI(body: {'language': code});
+    } catch (e) {
+      if (kDebugMode) {
+        print('Save language error $e');
+      }
     }
   }
 

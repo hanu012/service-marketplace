@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../salesman_home_module/salesman_home_controller.dart';
 import '../salesman_login_module/salesman_login_view.dart';
 
 /// The salesman's own profile (SPEC section 2.5).
@@ -95,6 +96,28 @@ class SalesmanProfileController extends GetxController {
     } finally {
       isSavingPreference = false;
       update();
+    }
+  }
+
+  /// Applies immediately on this device; the server copy is best-effort,
+  /// so a failed save never undoes the language the user can see.
+  Future<void> changeLanguageAPI(String code) async {
+    await Utils.applyLanguage(code);
+    profile?.language = code;
+    update();
+
+    // Plan names on the home screen come from the server in the request's
+    // language, so the screen beneath this one has to fetch again.
+    if (Get.isRegistered<SalesmanHomeController>()) {
+      Get.find<SalesmanHomeController>().fetchProfileAPI();
+    }
+
+    try {
+      await DataSource.instance.updatePreferencesAPI(body: {'language': code});
+    } catch (e) {
+      if (kDebugMode) {
+        print('Save language error $e');
+      }
     }
   }
 

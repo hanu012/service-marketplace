@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\CategoryResource\RelationManagers;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Models\Subcategory;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
@@ -40,15 +41,21 @@ class SubcategoriesRelationManager extends RelationManager
     public function form(Form $form): Form
     {
         return $form->schema([
-            TextInput::make('name')
-                ->required()
-                ->maxLength(255)
-                ->live(onBlur: true)
-                ->afterStateUpdated(function (string $operation, $state, Set $set) {
-                    if ($operation === 'create') {
-                        $set('slug', Str::slug((string) $state));
-                    }
-                }),
+            TranslatableInput::make('name', 'Name', function (string $language) {
+                $input = TextInput::make($language)->maxLength(255);
+
+                if ($language !== 'en') {
+                    return $input;
+                }
+
+                return $input
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(function (string $operation, $state, Set $set) {
+                        if ($operation === 'create') {
+                            $set('../slug', Str::slug((string) $state));
+                        }
+                    });
+            }, required: true),
 
             TextInput::make('slug')
                 ->required()

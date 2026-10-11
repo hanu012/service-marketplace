@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../constants/app.export.dart';
 import '../../../utils/location_capture.dart';
+import '../../../utils/place_service.dart';
+import '../../auth_flow/customer_select_location_module/customer_select_location_view.dart';
 import '../select_plan_module/select_plan_view.dart';
 
 /// Add Vendor, step 1 — business info and KYC (SPEC section 2.2).
@@ -141,9 +143,40 @@ class AddVendorController extends GetxController {
     if (position != null) {
       latitude = position.latitude;
       longitude = position.longitude;
+
+      // Fills the address only when the salesman has not typed one — a
+      // hand-written address (shop number, landmark) beats a geocoded one.
+      if (addressController.text.trim().isEmpty) {
+        final place = await PlaceService.instance.addressAt(
+          position.latitude,
+          position.longitude,
+        );
+
+        if (place != null) {
+          addressController.text = place.fullAddress;
+        }
+      }
     }
 
     isCapturingLocation = false;
+    update();
+  }
+
+  /// Search the shop's address with Places autocomplete. Reuses the
+  /// customer location picker, which only returns the chosen place and
+  /// saves nothing itself; it also offers GPS and a map pin.
+  Future<void> searchShopAddress() async {
+    final place = await Get.to<PlaceSuggestion?>(
+      () => const CustomerSelectLocationView(),
+    );
+
+    if (place == null || !place.hasPoint) {
+      return;
+    }
+
+    latitude = place.latitude;
+    longitude = place.longitude;
+    addressController.text = place.fullAddress;
     update();
   }
 

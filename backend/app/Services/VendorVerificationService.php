@@ -45,7 +45,7 @@ class VendorVerificationService
                 // A draft vendor keeps its status and just gets its
                 // account let in; verification happens later, after they
                 // subscribe and land in pending_verification.
-                'status' => $vendor->status === 'pending_verification' ? 'active' : $vendor->status,
+                'status' => $this->statusAfterApproval($vendor),
                 'verified_at' => now(),
                 'verified_by' => $admin->id,
                 'rejection_reason' => null,
@@ -57,6 +57,21 @@ class VendorVerificationService
         // Sent after the commit so a rolled-back approval cannot leave the
         // vendor holding a push that says they were approved.
         $this->pushNotifications->notifyVendorApproved($vendor);
+    }
+
+    /**
+     * Reversing a rejection must not leave the vendor 'rejected' while the
+     * account reads approved — that pair is invisible to customers with no
+     * hint why. A rejected vendor returns to active only if they hold a
+     * current paid subscription, otherwise to draft so they can still buy one.
+     */
+    private function statusAfterApproval(Vendor $vendor): string
+    {
+        return match ($vendor->status) {
+            'pending_verification' => 'active',
+            'rejected' => $vendor->currentActiveSubscription() !== null ? 'active' : 'draft',
+            default => $vendor->status,
+        };
     }
 
     public function reject(Vendor $vendor, User $admin, string $reason): void

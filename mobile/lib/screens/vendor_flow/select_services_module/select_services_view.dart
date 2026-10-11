@@ -36,10 +36,10 @@ class SelectServicesView extends StatelessWidget {
         businessName: businessName,
         loginEmail: loginEmail,
       ),
-      // Deliberately NOT disposed here. The zones step reads this same
-      // controller off GetX, and this screen stays alive underneath it in
-      // the navigator stack — so the instance is torn down by the zones
-      // step once the flow actually ends, not when this view rebuilds.
+      // No explicit dispose: the zones step reads this same controller off
+      // GetX while this screen stays alive beneath it. As the creator, this
+      // GetBuilder auto-removes the controller once this screen leaves the
+      // stack, which is when the flow is actually over.
       builder: (controller) {
         final picked = controller.selectedSubcategoryIds.length;
 

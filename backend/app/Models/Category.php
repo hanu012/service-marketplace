@@ -6,13 +6,18 @@ use App\Models\Concerns\PreventsDeletionWhileSubscribed;
 use App\Models\Concerns\TracksFileDisk;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
     use HasFactory;
+    use HasTranslations;
     use PreventsDeletionWhileSubscribed;
     use TracksFileDisk;
+
+    /** Stored per language (en / hi / gu); reads return the request locale, falling back to English. */
+    public array $translatable = ['name'];
 
     protected $fillable = [
         'name',

@@ -9,6 +9,17 @@ import '../utils/utils.dart';
 /// not compile without it.
 class Constants {
   static const String english = 'en';
+  static const String hindi = 'hi';
+  static const String gujarati = 'gu';
+
+  /// Every bundled language, each named in its own script — someone who
+  /// only reads Gujarati has to be able to find Gujarati in the list, so
+  /// these are deliberately not run through translation.
+  static const Map<String, String> languages = {
+    english: 'English',
+    hindi: 'हिन्दी',
+    gujarati: 'ગુજરાતી',
+  };
 
   // Roles, mirroring the UserRole enum on the backend (SPEC section 1).
   static const String admin = 'admin';

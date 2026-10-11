@@ -65,6 +65,14 @@ class SettingSeeder extends Seeder
             'label' => 'Maintenance mode',
             'description' => 'Global app-side maintenance toggle. Not yet enforced.',
         ],
+        [
+            'key' => 'enabled_languages',
+            'value' => '["en","hi","gu"]',
+            'type' => 'json',
+            'group' => 'app',
+            'label' => 'Enabled languages',
+            'description' => 'Languages the apps offer in Profile → Language. English is always on.',
+        ],
     ];
 
     public function run(): void

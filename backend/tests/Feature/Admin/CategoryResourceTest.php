@@ -121,7 +121,7 @@ class CategoryResourceTest extends TestCase
     {
         Livewire::test(CategoryResource\Pages\CreateCategory::class)
             ->fillForm([
-                'name' => 'Pest Control',
+                'name' => ['en' => 'Pest Control'],
                 'slug' => 'pest-control',
                 'is_active' => true,
             ])
@@ -131,13 +131,63 @@ class CategoryResourceTest extends TestCase
         $this->assertDatabaseHas('categories', ['slug' => 'pest-control']);
     }
 
+    public function test_a_category_is_saved_in_every_language(): void
+    {
+        Livewire::test(CategoryResource\Pages\CreateCategory::class)
+            ->fillForm([
+                'name' => ['en' => 'Pest Control', 'hi' => 'कीट नियंत्रण', 'gu' => 'જંતુ નિયંત્રણ'],
+                'slug' => 'pest-control',
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $category = Category::where('slug', 'pest-control')->sole();
+
+        $this->assertSame('Pest Control', $category->getTranslation('name', 'en'));
+        $this->assertSame('कीट नियंत्रण', $category->getTranslation('name', 'hi'));
+        $this->assertSame('જંતુ નિયંત્રણ', $category->getTranslation('name', 'gu'));
+    }
+
+    /**
+     * The edit form is filled from raw attributes, where the column is the
+     * stored JSON string — each language has to be split back out or the
+     * inputs open empty and the next save wipes the translations.
+     */
+    public function test_the_edit_form_opens_with_each_language_filled_in(): void
+    {
+        $category = Category::factory()->create([
+            'name' => ['en' => 'Plumbing', 'hi' => 'प्लंबिंग'],
+        ]);
+
+        Livewire::test(EditCategory::class, ['record' => $category->getKey()])
+            ->assertFormSet([
+                'name.en' => 'Plumbing',
+                'name.hi' => 'प्लंबिंग',
+            ])
+            ->fillForm(['name' => ['en' => 'Plumbing', 'hi' => 'प्लंबिंग', 'gu' => 'પ્લમ્બિંગ']])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $category->refresh();
+        $this->assertSame('प्लंबिंग', $category->getTranslation('name', 'hi'));
+        $this->assertSame('પ્લમ્બિંગ', $category->getTranslation('name', 'gu'));
+    }
+
+    public function test_english_is_required_but_other_languages_are_optional(): void
+    {
+        Livewire::test(CategoryResource\Pages\CreateCategory::class)
+            ->fillForm(['name' => ['hi' => 'कीट नियंत्रण'], 'slug' => 'pest'])
+            ->call('create')
+            ->assertHasFormErrors(['name.en' => 'required']);
+    }
+
     public function test_a_duplicate_slug_is_rejected(): void
     {
         Category::factory()->create(['slug' => 'plumbing']);
 
         Livewire::test(CategoryResource\Pages\CreateCategory::class)
             ->fillForm([
-                'name' => 'Plumbing',
+                'name' => ['en' => 'Plumbing'],
                 'slug' => 'plumbing',
             ])
             ->call('create')

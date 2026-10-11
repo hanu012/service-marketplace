@@ -4,9 +4,12 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Services\VendorVerificationService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class EditUser extends EditRecord
@@ -114,7 +117,50 @@ class EditUser extends EditRecord
     {
         unset($data['password']);
 
+        $this->vendorDecision = $data['vendor_decision'] ?? null;
+        $this->vendorDecisionReason = $data['vendor_decision_reason'] ?? null;
+        unset($data['vendor_decision'], $data['vendor_decision_reason']);
+
         return $data;
+    }
+
+    private ?string $vendorDecision = null;
+
+    private ?string $vendorDecisionReason = null;
+
+    /**
+     * Applies the Approve/Reject staged in the Verification section. Runs
+     * after the vendor fieldset has saved, so the service sees — and then
+     * overrides — the status that was just written from the dropdown.
+     * Permission is re-checked here: the staged value arrives in the
+     * request, so the hidden field alone is not the boundary.
+     */
+    protected function afterSave(): void
+    {
+        $decision = $this->vendorDecision;
+        $reason = trim((string) $this->vendorDecisionReason);
+        $this->vendorDecision = $this->vendorDecisionReason = null;
+
+        $vendor = $this->record->vendor()->first();
+
+        if ($decision === null || $vendor === null || ! (Auth::user()?->can('verify', Vendor::class) ?? false)) {
+            return;
+        }
+
+        $service = app(VendorVerificationService::class);
+
+        if ($decision === 'approve') {
+            $service->approve($vendor, Auth::user());
+
+            Notification::make()->title('Vendor approved')->success()->send();
+        } elseif ($decision === 'reject' && $reason !== '') {
+            $service->reject($vendor, Auth::user(), $reason);
+
+            Notification::make()->title('Vendor rejected')->danger()->send();
+        }
+
+        $this->data['vendor_decision'] = null;
+        $this->data['vendor_decision_reason'] = null;
     }
 
     protected function getRedirectUrl(): string

@@ -6,6 +6,7 @@ use App\Models\Concerns\RecordsAuditLog;
 use App\Models\Concerns\TracksFileDisk;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 
 /**
  * In-app banner (SPEC section 5 item 5) — targeted per flavour with a
@@ -24,8 +25,12 @@ use Illuminate\Database\Eloquent\Model;
 class Banner extends Model
 {
     use HasFactory;
+    use HasTranslations;
     use RecordsAuditLog;
     use TracksFileDisk;
+
+    /** Stored per language (en / hi / gu); reads return the request locale, falling back to English. */
+    public array $translatable = ['title'];
 
     protected $fillable = [
         'target_app',

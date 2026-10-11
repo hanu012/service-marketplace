@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Filament\Resources\CategoryResource\RelationManagers\SubcategoriesRelationManager;
 use App\Models\Category;
@@ -47,17 +48,23 @@ class CategoryResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            TextInput::make('name')
-                ->required()
-                ->maxLength(255)
-                ->live(onBlur: true)
-                // Only fill the slug while creating: changing it later would
-                // break any link already published against the old value.
-                ->afterStateUpdated(function (string $operation, $state, Set $set) {
-                    if ($operation === 'create') {
-                        $set('slug', Str::slug((string) $state));
-                    }
-                }),
+            TranslatableInput::make('name', 'Name', function (string $language) {
+                $input = TextInput::make($language)->maxLength(255);
+
+                if ($language !== 'en') {
+                    return $input;
+                }
+
+                return $input
+                    ->live(onBlur: true)
+                    // Only fill the slug while creating: changing it later
+                    // would break any link already published against it.
+                    ->afterStateUpdated(function (string $operation, $state, Set $set) {
+                        if ($operation === 'create') {
+                            $set('../slug', Str::slug((string) $state));
+                        }
+                    });
+            }, required: true),
 
             TextInput::make('slug')
                 ->required()

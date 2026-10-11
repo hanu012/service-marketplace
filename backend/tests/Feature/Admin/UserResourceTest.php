@@ -7,7 +7,9 @@ use App\Filament\Resources\UserResource;
 use App\Filament\Resources\UserResource\Pages\CreateUser;
 use App\Filament\Resources\UserResource\Pages\EditUser;
 use App\Filament\Resources\UserResource\Pages\ListUsers;
+use App\Models\Salesman;
 use App\Models\User;
+use App\Models\Zone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
@@ -47,6 +49,9 @@ class UserResourceTest extends TestCase
      */
     public function test_an_admin_can_create_a_salesman(): void
     {
+        $city = Zone::factory()->active()->create(['name' => 'Gandhinagar']);
+        Zone::factory()->active()->create(['name' => 'Sector 2', 'parent_id' => $city->id]);
+
         Livewire::test(CreateUser::class)
             ->fillForm([
                 'name' => 'Ravi Salesman',
@@ -55,8 +60,7 @@ class UserResourceTest extends TestCase
                 'salesman' => [
                     'employee_code' => 'EMP-001',
                     'phone' => '9900000001',
-                    'monthly_target_paise' => 5000000,
-                    'commission_rate_bps' => 1200,
+                    'region' => 'Sector 2 · Gandhinagar',
                     'is_active' => true,
                 ],
             ])
@@ -68,7 +72,99 @@ class UserResourceTest extends TestCase
         $this->assertSame(UserRole::Salesman, $user->role);
         $this->assertNotNull($user->salesman);
         $this->assertSame('EMP-001', $user->salesman->employee_code);
-        $this->assertSame(1200, $user->salesman->commission_rate_bps);
+        $this->assertSame('Sector 2 · Gandhinagar', $user->salesman->region);
+        // No longer on the form, so the column defaults apply.
+        $this->assertSame(0, $user->salesman->fresh()->commission_rate_bps);
+        $this->assertSame(0, $user->salesman->fresh()->monthly_target_paise);
+    }
+
+    /**
+     * Only real zones can be picked — a region typed into a crafted request
+     * is refused rather than stored as free text.
+     */
+    public function test_a_salesman_region_must_be_an_active_zone(): void
+    {
+        Zone::factory()->active()->create(['name' => 'Ambawadi']);
+
+        Livewire::test(CreateUser::class)
+            ->fillForm([
+                'name' => 'Ravi Salesman',
+                'email' => 'ravi3@example.com',
+                'role' => 'salesman',
+                'salesman' => [
+                    'employee_code' => 'EMP-003',
+                    'phone' => '9900000003',
+                    'region' => 'Somewhere Made Up',
+                    'is_active' => true,
+                ],
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['salesman.region']);
+    }
+
+    /**
+     * Regions typed in before this was a dropdown are not zone names.
+     * Editing such a salesman must neither blank the region nor fail.
+     */
+    public function test_editing_a_salesman_keeps_a_region_from_before_the_dropdown(): void
+    {
+        $user = User::factory()->role(UserRole::Salesman)->create();
+        Salesman::create([
+            'user_id' => $user->id,
+            'employee_code' => 'EMP-OLD',
+            'phone' => '9900000004',
+            'region' => 'Ahmedabad · Gujarat',
+        ]);
+
+        Livewire::test(EditUser::class, ['record' => $user->getKey()])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame('Ahmedabad · Gujarat', $user->salesman->fresh()->region);
+    }
+
+    /**
+     * The notification is stored and rebuilt before it renders, which is
+     * what broke the old inline copy code. Asserted on the rebuilt buttons.
+     */
+    public function test_the_temporary_password_can_be_copied_and_shared(): void
+    {
+        Livewire::test(CreateUser::class)
+            ->fillForm([
+                'name' => 'Riya Patel',
+                'email' => 'riya@example.com',
+                'role' => 'salesman',
+                'salesman' => ['employee_code' => 'EMP-009', 'phone' => '9900000009', 'is_active' => true],
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $notification = collect(session('filament.notifications'))
+            ->map(fn (array $data) => \Filament\Notifications\Notification::fromArray($data))
+            ->sole(fn ($n) => str_starts_with($n->getTitle(), 'Temporary password for'));
+
+        $actions = collect($notification->getActions())->keyBy(fn ($action) => $action->getName());
+        $password = strtok($notification->getBody(), "\n");
+
+        $this->assertTrue(Hash::check($password, User::where('email', 'riya@example.com')->sole()->password));
+
+        $this->assertSame('copy-temporary-credential', $actions['copy']->getEvent());
+        $this->assertSame($password, $actions['copy']->getEventData()['text']);
+
+        $this->assertSame('share-temporary-credential', $actions['share']->getEvent());
+        $this->assertStringContainsString($password, $actions['share']->getEventData()['text']);
+        $this->assertStringContainsString('riya@example.com', $actions['share']->getEventData()['text']);
+
+        $this->assertStringStartsWith('https://wa.me/?text=', $actions['whatsapp']->getUrl());
+        $this->assertStringContainsString(rawurlencode($password), $actions['whatsapp']->getUrl());
+    }
+
+    public function test_the_panel_loads_the_copy_and_share_handlers(): void
+    {
+        $this->get(UserResource::getUrl('index'))
+            ->assertOk()
+            ->assertSee("Livewire.on('copy-temporary-credential'", escape: false)
+            ->assertSee("Livewire.on('share-temporary-credential'", escape: false);
     }
 
     public function test_a_salesman_must_change_their_password_on_first_login(): void

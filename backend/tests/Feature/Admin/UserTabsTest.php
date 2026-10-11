@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Filament\Resources\MediaModerationResource;
 use App\Filament\Resources\UserResource\Pages\EditUser;
@@ -198,6 +199,61 @@ class UserTabsTest extends TestCase
             ['approveVendor'],
             $this->visibleDecisions($this->vendorUser('rejected')),
         );
+    }
+
+    /**
+     * Approve only stages the decision; nothing is written until Save
+     * changes. Driven through the hidden state the button sets, since the
+     * Actions component's buttons cannot be invoked from a test.
+     */
+    public function test_a_staged_approval_applies_only_on_save(): void
+    {
+        $user = $this->vendorUser();
+
+        $page = Livewire::test(EditUser::class, ['record' => $user->getKey()])
+            ->set('data.vendor_decision', 'approve');
+
+        $this->assertSame('pending_verification', $user->vendor->fresh()->status);
+
+        $page->call('save')->assertHasNoFormErrors();
+
+        $this->assertSame('active', $user->vendor->fresh()->status);
+        $this->assertTrue($user->fresh()->isApproved());
+    }
+
+    public function test_a_staged_rejection_applies_with_its_reason_on_save(): void
+    {
+        $user = $this->vendorUser('active');
+
+        Livewire::test(EditUser::class, ['record' => $user->getKey()])
+            ->set('data.vendor_decision', 'reject')
+            ->set('data.vendor_decision_reason', 'ID proof is unreadable')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $vendor = $user->vendor->fresh();
+        $this->assertSame('rejected', $vendor->status);
+        $this->assertSame('ID proof is unreadable', $vendor->rejection_reason);
+        $this->assertTrue($user->fresh()->isRejected());
+    }
+
+    /**
+     * The staged value travels in the request, so a sub-admin without the
+     * verify permission must not be able to approve by crafting it.
+     */
+    public function test_a_crafted_decision_from_a_sub_admin_without_verify_is_ignored(): void
+    {
+        $user = $this->vendorUser();
+
+        $this->actingAs(User::factory()->role(UserRole::Admin)->create([
+            'permissions' => [Permission::UsersViewAny->value, Permission::UsersUpdate->value],
+        ]));
+
+        Livewire::test(EditUser::class, ['record' => $user->getKey()])
+            ->set('data.vendor_decision', 'approve')
+            ->call('save');
+
+        $this->assertSame('pending_verification', $user->vendor->fresh()->status);
     }
 
     /**

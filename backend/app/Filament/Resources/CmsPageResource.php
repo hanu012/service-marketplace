@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Filament\Resources\CmsPageResource\Pages;
 use App\Models\CmsPage;
 use Filament\Forms\Components\MarkdownEditor;
@@ -45,9 +46,12 @@ class CmsPageResource extends Resource
                 ->unique(ignoreRecord: true)
                 ->helperText('The public URL: /pages/{slug}. Changing it breaks any link already published (including app store listing metadata).'),
 
-            TextInput::make('title')
-                ->required()
-                ->maxLength(255),
+            TranslatableInput::make(
+                'title',
+                'Title',
+                fn (string $language) => TextInput::make($language)->maxLength(255),
+                required: true,
+            )->columnSpanFull(),
 
             Select::make('target_app')
                 ->label('Target app')
@@ -59,7 +63,14 @@ class CmsPageResource extends Resource
                 ->placeholder('All apps')
                 ->helperText('Leave blank to show for every app.'),
 
-            MarkdownEditor::make('body'),
+            // One per line rather than side by side: a page body needs the
+            // full width to be editable at all.
+            TranslatableInput::make(
+                'body',
+                'Body',
+                fn (string $language) => MarkdownEditor::make($language)->columnSpanFull(),
+                columns: 1,
+            )->columnSpanFull(),
 
             Toggle::make('is_published')
                 ->helperText('Only published pages are reachable at their public URL.'),

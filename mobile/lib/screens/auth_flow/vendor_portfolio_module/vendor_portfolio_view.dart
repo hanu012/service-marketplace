@@ -867,9 +867,13 @@ class _VendorVideoThumbnailState extends State<VendorVideoThumbnail> {
       }
     }
 
-    // Cached even when null: a clip whose frame cannot be decoded should
-    // not be retried on every rebuild.
-    _cache[widget.url] = bytes;
+    // Only successes are cached. A failure is usually the network (the
+    // file server was briefly unreachable), and caching it pinned the tile
+    // blank for the rest of the session. Rebuilds still don't retry — this
+    // State keeps _done — only a fresh screen visit does.
+    if (bytes != null) {
+      _cache[widget.url] = bytes;
+    }
 
     if (!mounted) {
       return;

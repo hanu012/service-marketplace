@@ -285,6 +285,7 @@ class StringRes {
   static const String shopLocation = 'shopLocation';
   static const String captureLocation = 'captureLocation';
   static const String locationCaptured = 'locationCaptured';
+  static const String searchShopAddress = 'searchShopAddress';
   static const String locationServiceDisabled = 'locationServiceDisabled';
   static const String locationPermissionDenied = 'locationPermissionDenied';
   static const String locationCaptureFailed = 'locationCaptureFailed';
@@ -364,6 +365,7 @@ class StringRes {
   static const String targetsRow = 'targetsRow';
   static const String notificationsRow = 'notificationsRow';
   static const String languageRow = 'languageRow';
+  static const String chooseLanguage = 'chooseLanguage';
   static const String helpSupport = 'helpSupport';
   static const String logOutAction = 'logOutAction';
   static const String deleteAccountAction = 'deleteAccountAction';

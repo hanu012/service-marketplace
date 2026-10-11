@@ -52,21 +52,25 @@ class ServiceSearchController extends Controller
             ->active()
             ->whereHas('category', fn ($query) => $query->active())
             ->with('category')
+            // Names are stored per language as JSON. JSON_SEARCH matches the
+            // values in every language — so a customer can type Hindi or
+            // Gujarati — and never the "en"/"hi"/"gu" keys, which a plain
+            // LIKE would match for a two-letter query.
             ->where(function ($query) use ($escaped) {
                 $query
-                    ->where('subcategories.name', 'like', "%{$escaped}%")
+                    ->whereRaw("JSON_SEARCH(subcategories.name, 'one', ?) IS NOT NULL", ["%{$escaped}%"])
                     // Also matches the parent, so "AC" finds every
                     // service under AC Service even where the service's
                     // own name does not contain it.
                     ->orWhereHas(
                         'category',
-                        fn ($parent) => $parent->where('name', 'like', "%{$escaped}%")
+                        fn ($parent) => $parent->whereRaw("JSON_SEARCH(categories.name, 'one', ?) IS NOT NULL", ["%{$escaped}%"])
                     );
             })
             // A prefix match is almost always what was meant, so those
             // sort first rather than being scattered through the list in
             // catalogue order.
-            ->orderByRaw('CASE WHEN subcategories.name LIKE ? THEN 0 ELSE 1 END', ["{$escaped}%"])
+            ->orderByRaw("CASE WHEN JSON_SEARCH(subcategories.name, 'one', ?) IS NOT NULL THEN 0 ELSE 1 END", ["{$escaped}%"])
             ->orderBy('subcategories.sort_order')
             ->orderBy('subcategories.name')
             ->limit(self::LIMIT)

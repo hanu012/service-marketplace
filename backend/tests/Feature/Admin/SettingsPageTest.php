@@ -8,6 +8,7 @@ use App\Filament\Pages\SettingsPage;
 use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\Languages;
 use Database\Seeders\SettingSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -63,6 +64,30 @@ class SettingsPageTest extends TestCase
         $this->assertSame(10, Setting::get('grace_period_days'));
         $this->assertSame('2.1.0', Setting::get('force_update_version'));
         $this->assertTrue(Setting::get('maintenance_mode'));
+    }
+
+    public function test_enabled_languages_are_prefilled_and_saved(): void
+    {
+        Livewire::test(SettingsPage::class)
+            ->assertFormSet(['enabled_languages' => ['en', 'hi', 'gu']])
+            ->fillForm(['enabled_languages' => ['en', 'gu']])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(['en', 'gu'], Setting::get('enabled_languages'));
+    }
+
+    /**
+     * English is disabled in the UI, but a crafted submission can still
+     * leave it out — it comes back regardless, as the fallback language.
+     */
+    public function test_english_cannot_be_switched_off(): void
+    {
+        Livewire::test(SettingsPage::class)
+            ->fillForm(['enabled_languages' => ['hi']])
+            ->call('save');
+
+        $this->assertSame(['en', 'hi'], Languages::enabled());
     }
 
     public function test_force_update_version_rejects_a_malformed_version_string(): void

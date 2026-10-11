@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\User;
 
+use App\Support\Languages;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePreferencesRequest extends FormRequest
 {
@@ -15,7 +17,8 @@ class UpdatePreferencesRequest extends FormRequest
             // Restricted to what the apps actually bundle translations for
             // (assets/translations) — accepting an arbitrary tag would let
             // a client set a locale that then falls back silently forever.
-            'language' => ['sometimes', 'required', 'string', 'in:en'],
+            // Further limited to what the admin has enabled.
+            'language' => ['sometimes', 'required', 'string', Rule::in(Languages::enabled())],
             'enable_notification' => ['sometimes', 'required', 'boolean'],
         ];
     }

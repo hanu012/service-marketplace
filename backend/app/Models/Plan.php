@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\RecordsAuditLog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -29,7 +30,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Plan extends Model
 {
     use HasFactory;
+    use HasTranslations;
     use RecordsAuditLog;
+
+    /** Stored per language (en / hi / gu); reads return the request locale, falling back to English. */
+    public array $translatable = ['name', 'description'];
 
     protected $fillable = [
         'name',
