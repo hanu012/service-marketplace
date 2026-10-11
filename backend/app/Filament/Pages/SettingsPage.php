@@ -87,7 +87,7 @@ class SettingsPage extends Page implements HasForms
         return $form
             ->schema([
                 Section::make('Subscriptions')
-                    ->description('free_trial_max_days and free_grants_per_salesman_month are read by FreeTrialValidator today. grace_period_days is not read by anything yet — reserved for the expiry job (Phase 7).')
+                    ->description('All three are live: the free-trial limits are enforced when a salesman grants a trial, and the grace period decides how long an expired vendor stays visible.')
                     ->schema([
                         TextInput::make('free_trial_max_days')
                             ->label('Maximum free trial length (days)')
@@ -106,7 +106,7 @@ class SettingsPage extends Page implements HasForms
                             ->numeric()
                             ->minValue(1)
                             ->required()
-                            ->helperText('Not read by anything yet.'),
+                            ->helperText('Days after expiry that a vendor stays listed (in "grace") before the daily expiry job marks them expired.'),
                     ])
                     ->columns(3),
 

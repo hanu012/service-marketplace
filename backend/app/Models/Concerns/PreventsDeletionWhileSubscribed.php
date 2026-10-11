@@ -61,7 +61,10 @@ trait PreventsDeletionWhileSubscribed
     }
 
     /**
-     * How many subscription_items rows would be orphaned by deleting this.
+     * How many subscriptions reference this — distinct subscriptions, not
+     * subscription_items rows. One subscription stores a row for the
+     * category plus one per subcategory under it, so counting rows showed
+     * "9 subscriptions" for a category two vendors had bought.
      */
     public function countSubscriptionReferences(): int
     {
@@ -82,7 +85,7 @@ trait PreventsDeletionWhileSubscribed
             });
         }
 
-        return $query->count();
+        return $query->distinct()->count('subscription_id');
     }
 
     /**

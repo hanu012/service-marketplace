@@ -202,6 +202,24 @@ class DeletionGuardTest extends TestCase
         $this->assertDatabaseMissing('categories', ['id' => $category->id]);
     }
 
+    /**
+     * One subscription stores a row for the category and one per
+     * subcategory under it. The admin's "In use" column showed those rows
+     * as subscriptions — "9 subscriptions" for a category two vendors bought.
+     */
+    public function test_one_subscription_counts_once_however_many_of_its_rows_match(): void
+    {
+        $category = $this->category();
+        $this->reference('category', $category->id);
+
+        foreach (['gas-filling', 'installation', 'servicing'] as $slug) {
+            $this->reference('subcategory', $this->subcategory($category, $slug)->id);
+        }
+
+        $this->assertSame(4, DB::table('subscription_items')->count());
+        $this->assertSame(1, $category->countSubscriptionReferences());
+    }
+
     public function test_the_error_names_the_record_and_the_count(): void
     {
         $zone = $this->zone();
@@ -212,7 +230,7 @@ class DeletionGuardTest extends TestCase
             $this->fail('Expected RecordInUseException.');
         } catch (RecordInUseException $e) {
             $this->assertStringContainsString('Gota', $e->getMessage());
-            $this->assertStringContainsString('1 subscription item', $e->getMessage());
+            $this->assertStringContainsString('referenced by 1 subscription.', $e->getMessage());
             $this->assertStringContainsString('Deactivate it instead', $e->getMessage());
         }
     }
