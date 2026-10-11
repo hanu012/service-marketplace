@@ -57,9 +57,11 @@ class SettingsPage extends Page implements HasForms
      * @var array<int, string>
      */
     private const KEYS = [
+        // free_grants_per_salesman_month and grace_period_days are left off
+        // the page on purpose (client request). They are still enforced at
+        // their stored values; leaving them out of this list is what keeps
+        // Save from overwriting them with nulls.
         'free_trial_max_days',
-        'free_grants_per_salesman_month',
-        'grace_period_days',
         'force_update_version',
         'maintenance_mode',
         'enabled_languages',
@@ -74,8 +76,6 @@ class SettingsPage extends Page implements HasForms
     {
         $this->form->fill([
             'free_trial_max_days' => Setting::get('free_trial_max_days'),
-            'free_grants_per_salesman_month' => Setting::get('free_grants_per_salesman_month'),
-            'grace_period_days' => Setting::get('grace_period_days'),
             'force_update_version' => Setting::get('force_update_version'),
             'maintenance_mode' => Setting::get('maintenance_mode', false),
             'enabled_languages' => Languages::enabled(),
@@ -87,26 +87,13 @@ class SettingsPage extends Page implements HasForms
         return $form
             ->schema([
                 Section::make('Subscriptions')
-                    ->description('All three are live: the free-trial limits are enforced when a salesman grants a trial, and the grace period decides how long an expired vendor stays visible.')
+                    ->description('Enforced when a salesman grants a free trial.')
                     ->schema([
                         TextInput::make('free_trial_max_days')
                             ->label('Maximum free trial length (days)')
                             ->numeric()
                             ->minValue(1)
                             ->required(),
-
-                        TextInput::make('free_grants_per_salesman_month')
-                            ->label('Free grants per salesman per month')
-                            ->numeric()
-                            ->minValue(1)
-                            ->required(),
-
-                        TextInput::make('grace_period_days')
-                            ->label('Grace period (days)')
-                            ->numeric()
-                            ->minValue(1)
-                            ->required()
-                            ->helperText('Days after expiry that a vendor stays listed (in "grace") before the daily expiry job marks them expired.'),
                     ])
                     ->columns(3),
 

@@ -39,20 +39,16 @@ class SettingsPageTest extends TestCase
         Livewire::test(SettingsPage::class)
             ->assertFormSet([
                 'free_trial_max_days' => 15,
-                'free_grants_per_salesman_month' => 10,
-                'grace_period_days' => 7,
                 'force_update_version' => '1.0.0',
                 'maintenance_mode' => false,
             ]);
     }
 
-    public function test_saving_updates_all_five_keys_with_a_correct_type_round_trip(): void
+    public function test_saving_updates_every_key_on_the_page_with_a_correct_type_round_trip(): void
     {
         Livewire::test(SettingsPage::class)
             ->fillForm([
                 'free_trial_max_days' => 20,
-                'free_grants_per_salesman_month' => 12,
-                'grace_period_days' => 10,
                 'force_update_version' => '2.1.0',
                 'maintenance_mode' => true,
             ])
@@ -60,10 +56,25 @@ class SettingsPageTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertSame(20, Setting::get('free_trial_max_days'));
-        $this->assertSame(12, Setting::get('free_grants_per_salesman_month'));
-        $this->assertSame(10, Setting::get('grace_period_days'));
         $this->assertSame('2.1.0', Setting::get('force_update_version'));
         $this->assertTrue(Setting::get('maintenance_mode'));
+    }
+
+    /**
+     * Free grants per month and the grace period are off the page but
+     * still enforced. Saving must leave them alone rather than null them.
+     */
+    public function test_saving_leaves_the_settings_not_on_the_page_untouched(): void
+    {
+        Livewire::test(SettingsPage::class)
+            ->assertFormFieldDoesNotExist('free_grants_per_salesman_month')
+            ->assertFormFieldDoesNotExist('grace_period_days')
+            ->fillForm(['free_trial_max_days' => 20])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(10, Setting::get('free_grants_per_salesman_month'));
+        $this->assertSame(7, Setting::get('grace_period_days'));
     }
 
     public function test_enabled_languages_are_prefilled_and_saved(): void
