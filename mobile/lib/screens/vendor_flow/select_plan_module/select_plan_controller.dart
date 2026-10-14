@@ -13,11 +13,13 @@ class SelectPlanController extends GetxController {
   final int vendorId;
   final String businessName;
   final String loginEmail;
+  final bool isRenewal;
 
   SelectPlanController({
     required this.vendorId,
     required this.businessName,
     required this.loginEmail,
+    this.isRenewal = false,
   });
 
   List<PlanModel> plans = [];
@@ -88,6 +90,7 @@ class SelectPlanController extends GetxController {
           plan: plan,
           businessName: businessName,
           loginEmail: loginEmail,
+          isRenewal: isRenewal,
         ));
   }
 }

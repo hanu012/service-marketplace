@@ -26,6 +26,9 @@ class SubscriptionAddonResource extends JsonResource
             'resource' => $this->getAttribute('resource'),
             'quantity' => $this->quantity,
             'price_paise' => $this->price_paise,
+            // paid | pending_payment | cancelled
+            'status' => $this->status,
+            'payment_link_url' => $this->payment?->payment_link_url,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

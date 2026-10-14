@@ -4,17 +4,20 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BannerController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ChangePasswordController;
+use App\Http\Controllers\Api\CustomerAddressController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DeleteAccountController;
 use App\Http\Controllers\Api\DeviceTokenController;
-use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\Api\PreferenceController;
+use App\Http\Controllers\Api\RazorpayWebhookController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\LeadController;
-use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\PlanController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SalesmanController;
+use App\Http\Controllers\Api\ServiceSearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\VendorController;
@@ -43,32 +46,44 @@ Route::prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])
         ->middleware('auth:sanctum');
 
-    // Changing your own password while signed in, as opposed to the emailed
-    // reset flow. This is the way out of a forced change (SPEC section 2.1),
-    // so RequirePasswordChange deliberately lets it through.
+    // Changing your own password while signed in. There is no emailed reset
+    // flow and no email verification: the platform sends no mail at all, and
+    // admin approval is the single gate on an account (SPEC section 3.1).
+    //
+    // A locked-out user is recovered by an admin issuing a fresh temporary
+    // password from the panel, which sets must_change_password — this route
+    // is then the way out of that, so RequirePasswordChange lets it through.
     Route::post('/change-password', ChangePasswordController::class)
         ->middleware(['auth:sanctum', 'throttle:change-password']);
 
-    Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])
-        ->middleware('throttle:password-email');
-
-    Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])
-        ->middleware('throttle:password-email');
-
-    // `signed` rejects tampered or expired links before the controller runs.
-    Route::get('/verify-email/{id}/{hash}', [EmailVerificationController::class, 'verify'])
-        ->middleware(['signed', 'throttle:verification'])
-        ->name('verification.verify');
-
-    // Intentionally unauthenticated: a vendor blocked from logging in for
-    // want of verification still needs a way to request a fresh link.
-    Route::post('/resend-verification', [EmailVerificationController::class, 'resend'])
-        ->middleware('throttle:verification');
+    // "Forgot password?" — files a request for an admin to issue a temporary
+    // password (Users → Reset requests in the panel). Changes no password
+    // and sends nothing; public, since the caller cannot sign in.
+    Route::post('/password-reset-requests', PasswordResetRequestController::class)
+        ->middleware('throttle:password-reset-request');
 });
+
+// Razorpay → us when a payment link is paid, expires or is cancelled. No
+// token: Razorpay signs the body instead (X-Razorpay-Signature), checked in
+// the controller before anything is read. See RazorpayWebhookController.
+Route::post('/webhooks/razorpay', RazorpayWebhookController::class)
+    ->middleware('throttle:public-read');
 
 // Public master data. No token: customers browse categories before signing
 // in, and the vendor/salesman apps need the tree to render plan selection.
 Route::get('/categories', [CategoryController::class, 'index'])
+    ->middleware('throttle:public-read');
+
+// "X vendors" per subcategory on the customer subcategories screen.
+// Zone/customer-specific, unlike /categories above, so it is its own
+// endpoint rather than a field on the cached tree.
+Route::get('/categories/{category}/vendor-counts', [CategoryController::class, 'vendorCounts'])
+    ->middleware('throttle:public-read');
+
+// Free-text service lookup for the customer search bar. Separate from
+// /categories above: that one returns the whole tree as cache-on-launch
+// master data, this returns a short ranked slice for a query.
+Route::get('/services/search', [ServiceSearchController::class, 'index'])
     ->middleware('throttle:public-read');
 
 Route::get('/plans', [PlanController::class, 'index'])
@@ -113,6 +128,11 @@ Route::get('/vendors/{vendor}/detail', [VendorDetailController::class, 'show'])
 Route::middleware(['auth:sanctum', 'role:vendor'])->group(function () {
     Route::get('/vendors/me', [VendorController::class, 'me']);
 
+    // The vendor editing their own business profile (SPEC section 3.2).
+    // No id in the path for the same reason as the GET: the vendor is
+    // resolved from the token, so there is no other record to reach.
+    Route::patch('/vendors/me', [VendorController::class, 'updateMe']);
+
     // Adding within remaining quota on the vendor's own active subscription
     // (SPEC section 3.3, task 4.4) — distinct from POST /subscriptions,
     // which only ever creates a fresh one for a `draft` vendor. No
@@ -138,19 +158,43 @@ Route::middleware(['auth:sanctum', 'role:vendor'])->group(function () {
     // no Idempotency-Key/throttle beyond the standard sanctum guard —
     // same shape as /vendors/me/services and /vendors/me/portfolio.
     Route::get('/vendors/me/leads', [VendorLeadController::class, 'index']);
+    // Counts for the vendor home "Recent calls" card.
+    Route::get('/vendors/me/leads/summary', [VendorLeadController::class, 'summary']);
     Route::post('/vendors/me/leads/{lead}/request-review', [VendorLeadController::class, 'requestReview']);
 });
 
 // A customer's own record (SPEC section 4.2, task 4.6) — location
 // detection for the home screen header, GPS point or pincode fallback.
 Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
+    Route::get('/customers/me', [CustomerController::class, 'me']);
+    Route::patch('/customers/me', [CustomerController::class, 'updateMe']);
     Route::post('/customers/me/location', [CustomerController::class, 'updateLocation']);
+
+    // Saved addresses — the address book behind the location picker and
+    // Profile → My addresses. Choosing one also goes through
+    // customers/me/location above, which is what vendor matching reads.
+    Route::get('/customers/me/addresses', [CustomerAddressController::class, 'index']);
+    Route::post('/customers/me/addresses', [CustomerAddressController::class, 'store']);
+    Route::patch('/customers/me/addresses/{address}', [CustomerAddressController::class, 'update'])
+        ->whereNumber('address');
+    Route::delete('/customers/me/addresses/{address}', [CustomerAddressController::class, 'destroy'])
+        ->whereNumber('address');
+    Route::post('/customers/me/addresses/{address}/default', [CustomerAddressController::class, 'makeDefault'])
+        ->whereNumber('address');
 
     // SPEC section 4 item 7, task 5.4 — the write the vendor-detail
     // screen's Call/WhatsApp buttons must complete and confirm BEFORE
     // opening the dialer/WhatsApp intent.
     Route::post('/leads', [LeadController::class, 'store'])
         ->middleware('throttle:leads');
+
+    // Approximate call length, reported by the customer app when the
+    // customer returns from the dialer; and the customer's own call
+    // history (Profile → My calls).
+    Route::post('/leads/{lead}/duration', [LeadController::class, 'recordDuration'])
+        ->whereNumber('lead')
+        ->middleware('throttle:leads');
+    Route::get('/customers/me/calls', [LeadController::class, 'myCalls']);
 
     // SPEC section 9, task 5.5 — write and 24-hour edit window. Both
     // routes resolve everything from the caller's token (never a
@@ -199,6 +243,11 @@ Route::middleware(['auth:sanctum', 'role:salesman,admin,vendor'])->group(functio
     Route::post('/subscriptions', [SubscriptionController::class, 'store'])
         ->middleware(['throttle:subscribe', HandleIdempotentSubscription::class]);
 
+    // Renewal for a vendor who already had a plan (active early, grace, or
+    // expired) — RenewSubscriptionRequest / SubscriptionService::renew().
+    Route::post('/subscriptions/renew', [SubscriptionController::class, 'renew'])
+        ->middleware(['throttle:subscribe', HandleIdempotentSubscription::class]);
+
     // Upgrade/downgrade and add-on (SPEC section 3 item 6 / section 6,
     // task 4.7) — same dual-path role gate as fresh subscribe, since
     // both are money-bearing (unlike task 4.4's free add-services,
@@ -214,6 +263,8 @@ Route::middleware(['auth:sanctum', 'role:salesman,admin,vendor'])->group(functio
 // A salesman's own records (SPEC sections 2.3, 2.4) — never admin, since
 // there is no "own vendors" concept for an admin here.
 Route::middleware(['auth:sanctum', 'role:salesman'])->group(function () {
+    Route::get('/salesmen/me', [SalesmanController::class, 'me']);
+    Route::patch('/salesmen/me', [SalesmanController::class, 'updateMe']);
     Route::get('/salesmen/me/vendors', [SalesmanController::class, 'vendors']);
     Route::get('/salesmen/me/commissions', [SalesmanController::class, 'commissions']);
 });
@@ -221,6 +272,13 @@ Route::middleware(['auth:sanctum', 'role:salesman'])->group(function () {
 Route::get('/user', function (Request $request) {
     return ApiResponse::success(new UserResource($request->user()));
 })->middleware('auth:sanctum');
+
+// Language and the notification mute (SPEC section 2.5's profile screen).
+// Role-agnostic: all three apps show the same two switches. Admin is
+// excluded for the same reason as account deletion below — the panel is
+// not one of these apps.
+Route::patch('/user/preferences', [PreferenceController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:vendor,salesman,customer']);
 
 // Self-service account deletion (SPEC section 4 item 10, "required for
 // app store compliance"). Deliberately excludes admin — closed by

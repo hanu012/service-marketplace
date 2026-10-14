@@ -25,7 +25,15 @@ class UserResource extends JsonResource
             // (SPEC section 2.1). Enforced server-side too - see
             // RequirePasswordChange middleware.
             'must_change_password' => (bool) $this->must_change_password,
-            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
+            // Drives which screen the app opens after sign-in (SPEC section
+            // 3.1): anything but 'approved' goes to the pending screen
+            // instead of home. Enforced server-side too — see
+            // RequireApprovedAccount middleware.
+            'approval_status' => $this->approval_status->value,
+            // Only meaningful on a rejection, where it carries the admin's
+            // reason so the app can show it rather than a dead end.
+            'approval_note' => $this->approval_note,
+            'approval_decided_at' => $this->approval_decided_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

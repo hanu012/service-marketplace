@@ -4,9 +4,12 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Services\VendorVerificationService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class EditUser extends EditRecord
@@ -38,6 +41,9 @@ class EditUser extends EditRecord
             ->icon('heroicon-o-trash')
             ->color('danger')
             ->visible(fn (User $record): bool => ! $record->trashed())
+            // Reaching this page needs users.update, not users.delete — and
+            // UserPolicy::delete also refuses deleting yourself.
+            ->authorize(fn (User $record): bool => Auth::user()?->can('delete', $record) ?? false)
             ->requiresConfirmation()
             ->modalHeading('Delete this account?')
             ->modalDescription(
@@ -74,6 +80,7 @@ class EditUser extends EditRecord
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('success')
             ->visible(fn (User $record): bool => $record->trashed())
+            ->authorize(fn (User $record): bool => Auth::user()?->can('restore', $record) ?? false)
             ->requiresConfirmation()
             ->modalHeading('Restore this account?')
             ->modalDescription(fn (User $record): string => $record->original_email
@@ -114,11 +121,83 @@ class EditUser extends EditRecord
     {
         unset($data['password']);
 
+        $this->vendorDecision = $data['vendor_decision'] ?? null;
+        $this->vendorDecisionReason = $data['vendor_decision_reason'] ?? null;
+        unset($data['vendor_decision'], $data['vendor_decision_reason']);
+
         return $data;
+    }
+
+    private ?string $vendorDecision = null;
+
+    private ?string $vendorDecisionReason = null;
+
+    /**
+     * Applies the Approve/Reject staged in the Verification section. Runs
+     * after the vendor fieldset has saved, so the service sees — and then
+     * overrides — the status that was just written from the dropdown.
+     * Permission is re-checked here: the staged value arrives in the
+     * request, so the hidden field alone is not the boundary.
+     */
+    protected function afterSave(): void
+    {
+        $decision = $this->vendorDecision;
+        $reason = trim((string) $this->vendorDecisionReason);
+        $this->vendorDecision = $this->vendorDecisionReason = null;
+
+        $vendor = $this->record->vendor()->first();
+
+        if ($decision === null || $vendor === null || ! (Auth::user()?->can('verify', Vendor::class) ?? false)) {
+            return;
+        }
+
+        $service = app(VendorVerificationService::class);
+
+        if ($decision === 'approve') {
+            $service->approve($vendor, Auth::user());
+
+            Notification::make()->title('Vendor approved')->success()->send();
+        } elseif ($decision === 'reject' && $reason !== '') {
+            $service->reject($vendor, Auth::user(), $reason);
+
+            Notification::make()->title('Vendor rejected')->danger()->send();
+        }
+
+        $this->data['vendor_decision'] = null;
+        $this->data['vendor_decision_reason'] = null;
     }
 
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    /**
+     * Puts the user form itself in the tab strip alongside Vendor and
+     * Media, rather than above them.
+     *
+     * Without this Filament stacks the form and then the relation tabs
+     * underneath, so the vendor record and its uploads sit below a long
+     * form and are easy to miss entirely. Combined, the page reads as one
+     * record with three views of it.
+     */
+    public function hasCombinedRelationManagerTabsWithContent(): bool
+    {
+        return true;
+    }
+
+    /**
+     * The label for that first tab. "Account" rather than Filament's
+     * default record title, which would repeat the name already in the
+     * page heading.
+     */
+    public function getContentTabLabel(): ?string
+    {
+        return 'Account';
+    }
+
+    public function getContentTabIcon(): ?string
+    {
+        return 'heroicon-o-user';
     }
 }

@@ -4,8 +4,8 @@ import 'package:get/get.dart';
 import 'package:service_marketplace/common_model/common_response.dart';
 import 'package:service_marketplace/constants/flavor_config.dart';
 import 'package:service_marketplace/network/data_source.dart';
+import 'package:service_marketplace/screens/auth_flow/account_verification_module/account_verification_view.dart';
 import 'package:service_marketplace/screens/auth_flow/change_password_module/change_password_view.dart';
-import 'package:service_marketplace/screens/auth_flow/email_verification_pending_module/email_verification_pending_view.dart';
 import 'package:service_marketplace/screens/auth_flow/vendor_landing_module/vendor_landing_view.dart';
 import 'package:service_marketplace/screens/auth_flow/vendor_login_module/vendor_login_controller.dart';
 import 'package:service_marketplace/screens/auth_flow/vendor_register_module/vendor_register_controller.dart';
@@ -16,8 +16,12 @@ class _RecordingAuthDataSource extends DataSource {
   Map<String, dynamic>? capturedLoginBody;
   Map<String, dynamic>? capturedRegisterBody;
 
-  String loginOutcome = 'success'; // success | invalid | unverified
-  bool registerIssuesToken = false;
+  String loginOutcome = 'success'; // success | invalid | pending
+
+  /// What the server reports for a freshly registered account. Real
+  /// registrations are always 'pending' (SPEC section 3.1); the approved
+  /// value exists so the straight-to-home branch is still exercised.
+  String registerApprovalStatus = 'pending';
   Map<String, List<String>>? registerFieldErrors;
 
   @override
@@ -32,14 +36,9 @@ class _RecordingAuthDataSource extends DataSource {
       }, statusCode: 401);
     }
 
-    if (loginOutcome == 'unverified') {
-      return CommonResponse.fromJson({
-        'success': false,
-        'data': null,
-        'error': {'code': 'EMAIL_NOT_VERIFIED', 'message': 'Please verify your email.'},
-      }, statusCode: 403);
-    }
-
+    // An unapproved account signs in successfully and is handed a real
+    // token — the gate is on the other endpoints, not on login. Getting
+    // this wrong in the fake would hide the whole behaviour under test.
     return CommonResponse.fromJson({
       'success': true,
       'data': {
@@ -49,6 +48,7 @@ class _RecordingAuthDataSource extends DataSource {
           'email': body['email'],
           'role': 'vendor',
           'must_change_password': false,
+          'approval_status': loginOutcome == 'pending' ? 'pending' : 'approved',
         },
         'token': '1|abc',
       },
@@ -79,6 +79,8 @@ class _RecordingAuthDataSource extends DataSource {
       }, statusCode: 422);
     }
 
+    // Registration always returns a token now, approved or not — the app
+    // needs a live session to show the pending screen and sign out again.
     return CommonResponse.fromJson({
       'success': true,
       'data': {
@@ -88,8 +90,9 @@ class _RecordingAuthDataSource extends DataSource {
           'email': body['email'],
           'role': 'vendor',
           'must_change_password': false,
+          'approval_status': registerApprovalStatus,
         },
-        'token': registerIssuesToken ? '1|abc' : null,
+        'token': '1|abc',
       },
       'error': null,
     }, statusCode: 201);
@@ -172,10 +175,11 @@ void main() {
       controller.onClose();
     });
 
-    testWidgets('EMAIL_NOT_VERIFIED navigates to the verification-pending screen', (
+    /// The sign-in itself succeeds — what changes is where it lands.
+    testWidgets('an unapproved account lands on the verification screen', (
       tester,
     ) async {
-      final fake = _RecordingAuthDataSource()..loginOutcome = 'unverified';
+      final fake = _RecordingAuthDataSource()..loginOutcome = 'pending';
       DataSource.instance = fake;
 
       final controller = _fillLoginController(tester);
@@ -184,8 +188,8 @@ void main() {
       await controller.loginAPI();
       await tester.pumpAndSettle();
 
-      expect(find.byType(EmailVerificationPendingView), findsOneWidget);
-      expect(find.text('vendor@example.com'), findsOneWidget);
+      expect(find.byType(AccountVerificationView), findsOneWidget);
+      expect(find.byType(VendorLandingView), findsNothing);
 
       controller.onClose();
     });
@@ -201,7 +205,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(VendorLandingView), findsNothing);
-      expect(find.byType(EmailVerificationPendingView), findsNothing);
+      expect(find.byType(AccountVerificationView), findsNothing);
 
       controller.onClose();
     });
@@ -292,9 +296,9 @@ void main() {
     });
 
     testWidgets(
-      'a token-less response (the expected case) navigates to verification-pending, not home',
+      'a pending account (the expected case) navigates to verification, not home',
       (tester) async {
-        final fake = _RecordingAuthDataSource()..registerIssuesToken = false;
+        final fake = _RecordingAuthDataSource()..registerApprovalStatus = 'pending';
         DataSource.instance = fake;
 
         final controller = buildController();
@@ -303,7 +307,7 @@ void main() {
         await controller.registerAPI();
         await tester.pumpAndSettle();
 
-        expect(find.byType(EmailVerificationPendingView), findsOneWidget);
+        expect(find.byType(AccountVerificationView), findsOneWidget);
         expect(find.byType(VendorLandingView), findsNothing);
 
         controller.onClose();
@@ -323,7 +327,7 @@ void main() {
       await controller.registerAPI();
       await tester.pumpAndSettle();
 
-      expect(find.byType(EmailVerificationPendingView), findsNothing);
+      expect(find.byType(AccountVerificationView), findsNothing);
       expect(find.byType(VendorLandingView), findsNothing);
 
       controller.onClose();
@@ -361,6 +365,11 @@ class _MustChangePasswordDataSource extends DataSource {
           'email': body['email'],
           'role': 'vendor',
           'must_change_password': true,
+          // Approved, so this test isolates the password gate. Leaving it
+          // unset would default to pending and the controller would route
+          // to the verification screen instead — passing or failing for a
+          // reason that has nothing to do with what is being tested.
+          'approval_status': 'approved',
         },
         'token': '1|abc',
       },

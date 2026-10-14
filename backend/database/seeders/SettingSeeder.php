@@ -66,14 +66,28 @@ class SettingSeeder extends Seeder
             'description' => 'Global app-side maintenance toggle. Not yet enforced.',
         ],
         [
-            'key' => 'bypass_email_verification',
+            'key' => 'enabled_languages',
+            'value' => '["en","hi","gu"]',
+            'type' => 'json',
+            'group' => 'app',
+            'label' => 'Enabled languages',
+            'description' => 'Languages the apps offer in Profile → Language. English is always on.',
+        ],
+        [
+            'key' => 'call_tracking_enabled',
+            'value' => 'true',
+            'type' => 'boolean',
+            'group' => 'app',
+            'label' => 'Call tracking in apps',
+            'description' => 'Shows Recent calls (vendor app) and My calls (customer app), and times each call approximately. Off hides them; calls still work and leads are still recorded.',
+        ],
+        [
+            'key' => 'razorpay_payment_links_enabled',
             'value' => 'false',
             'type' => 'boolean',
-            'group' => 'dev',
-            'label' => 'Bypass email verification (local only)',
-            'description' => 'When on, self-registration does not send a verification email — '
-                .'the account is still created unverified and an admin verifies it by hand from '
-                .'the Users list. A stopgap until real SMTP is wired up; keep off in production.',
+            'group' => 'payments',
+            'label' => 'Online payments via Razorpay',
+            'description' => 'On: online sales send a Razorpay payment link and activate when paid. Off: online payments are recorded as paid immediately (placeholder).',
         ],
     ];
 

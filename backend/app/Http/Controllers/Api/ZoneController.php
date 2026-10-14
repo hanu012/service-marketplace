@@ -30,6 +30,14 @@ class ZoneController extends Controller
         $zones = Zone::query()
             ->whereNull('parent_id')
             ->active()
+            // A city whose sub-zones are all still drafts is left out. It
+            // is not a leaf (ZoneMatcher and the subscribe validator both
+            // count inactive children), but with only active children
+            // loaded below, ZoneResource would report it as one and the
+            // apps would offer a zone the server then rejects.
+            ->where(fn ($query) => $query
+                ->whereDoesntHave('children')
+                ->orWhereHas('children', fn ($child) => $child->active()))
             ->with([
                 'children' => fn ($query) => $query
                     ->active()

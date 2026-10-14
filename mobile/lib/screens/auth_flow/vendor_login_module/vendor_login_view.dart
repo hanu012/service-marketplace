@@ -19,7 +19,17 @@ class VendorLoginView extends StatelessWidget {
           title: StringRes.vendorLoginTitle,
           subtitle: StringRes.vendorLoginDesc,
           formKey: controller.formKey,
+          brandIcon: Icons.storefront_outlined,
+          brandTitle: StringRes.vendorPortal,
+          brandSubtitle: StringRes.vendorPortalDesc,
           showBack: false,
+          extras: AuthExtrasRow(
+            checkboxLabel: StringRes.rememberMe,
+            checked: controller.rememberMe,
+            onCheckedChanged: controller.toggleRememberMe,
+            actionLabel: StringRes.forgotPassword,
+            onAction: controller.openForgotPassword,
+          ),
           fields: [
             AuthTextField(
               label: StringRes.email,

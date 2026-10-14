@@ -41,7 +41,18 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            // Overridable so file URLs can point somewhere other than the
+            // app's own origin. Needed locally: `php artisan serve` closes
+            // the connection partway through a large static response, so
+            // every portfolio photo reached the Flutter apps as a broken
+            // image ("Connection closed while receiving data") even though
+            // curl fetched the same file intact. Pointing this at a real
+            // web server serving storage/app/public fixes it. Production
+            // keeps files on R2, whose disk carries its own URL.
+            'url' => env(
+                'FILESYSTEM_PUBLIC_URL',
+                rtrim(env('APP_URL', 'http://localhost'), '/').'/storage'
+            ),
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

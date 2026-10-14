@@ -96,7 +96,7 @@ class DeleteAccountView extends StatelessWidget {
           Expanded(
             child: BaseTextDMSans(
               text: StringRes.deleteAccountWarning,
-              fontSize: 13,
+              fontSize: 12,
               color: ColorRes.secondaryColor,
             ).tr(),
           ),

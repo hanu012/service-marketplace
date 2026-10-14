@@ -89,17 +89,87 @@ class CategoryResourceTest extends TestCase
             ->assertTableBulkActionDoesNotExist(DeleteBulkAction::class);
     }
 
-    public function test_the_active_toggle_flips_the_record(): void
+    public function test_change_status_flips_the_record_and_records_the_reason(): void
     {
         $category = Category::factory()->create(['is_active' => true]);
 
-        // ToggleColumn is not an action — it calls updateTableColumnState on
-        // the Livewire component, so the test drives that directly.
         Livewire::test(ListCategories::class)
-            ->assertTableColumnStateSet('is_active', true, $category)
-            ->call('updateTableColumnState', 'is_active', (string) $category->getKey(), false);
+            ->callTableAction('changeStatus', $category, data: [
+                'is_active' => '0',
+                'reason' => 'Seasonal service, off until summer.',
+            ])
+            ->assertHasNoTableActionErrors();
 
         $this->assertFalse($category->fresh()->is_active);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'status_changed',
+            'auditable_type' => $category->getMorphClass(),
+            'auditable_id' => $category->getKey(),
+            'user_id' => auth()->id(),
+        ]);
+        $this->assertSame(
+            'Seasonal service, off until summer.',
+            \App\Models\AuditLog::query()->for($category)->where('action', 'status_changed')->sole()->new_values['reason'],
+        );
+    }
+
+    public function test_change_status_requires_a_reason(): void
+    {
+        $category = Category::factory()->create(['is_active' => true]);
+
+        Livewire::test(ListCategories::class)
+            ->callTableAction('changeStatus', $category, data: ['is_active' => '0', 'reason' => ''])
+            ->assertHasTableActionErrors(['reason' => 'required']);
+
+        $this->assertTrue($category->fresh()->is_active);
+    }
+
+    /**
+     * The one-click toggle is gone from the list on purpose: status only
+     * changes through the reasoned action, so it cannot be flipped by a
+     * stray click.
+     */
+    public function test_status_is_a_badge_not_a_toggle(): void
+    {
+        $category = Category::factory()->create(['is_active' => true]);
+
+        Livewire::test(ListCategories::class)
+            ->assertTableColumnFormattedStateSet('is_active', 'Active', $category)
+            ->assertTableActionExists('changeStatus')
+            ->assertTableActionExists('view');
+    }
+
+    public function test_the_view_modal_opens(): void
+    {
+        $category = Category::factory()->create();
+
+        Livewire::test(ListCategories::class)
+            ->mountTableAction('view', $category)
+            ->assertHasNoTableActionErrors();
+    }
+
+    public function test_the_edit_page_offers_change_status_and_no_active_field(): void
+    {
+        $category = Category::factory()->create(['is_active' => true]);
+
+        Livewire::test(EditCategory::class, ['record' => $category->getRouteKey()])
+            ->assertActionExists('changeStatus')
+            ->assertFormFieldIsHidden('is_active')
+            ->callAction('changeStatus', data: ['is_active' => '0', 'reason' => 'Retired'])
+            ->assertHasNoActionErrors();
+
+        $this->assertFalse($category->fresh()->is_active);
+    }
+
+    public function test_tabs_split_active_and_inactive(): void
+    {
+        $active = Category::factory()->create(['is_active' => true]);
+        $inactive = Category::factory()->create(['is_active' => false]);
+
+        Livewire::test(ListCategories::class)
+            ->set('activeTab', 'inactive')
+            ->assertCanSeeTableRecords([$inactive])
+            ->assertCanNotSeeTableRecords([$active]);
     }
 
     public function test_reordering_writes_sort_order(): void
@@ -121,7 +191,7 @@ class CategoryResourceTest extends TestCase
     {
         Livewire::test(CategoryResource\Pages\CreateCategory::class)
             ->fillForm([
-                'name' => 'Pest Control',
+                'name' => ['en' => 'Pest Control'],
                 'slug' => 'pest-control',
                 'is_active' => true,
             ])
@@ -131,13 +201,63 @@ class CategoryResourceTest extends TestCase
         $this->assertDatabaseHas('categories', ['slug' => 'pest-control']);
     }
 
+    public function test_a_category_is_saved_in_every_language(): void
+    {
+        Livewire::test(CategoryResource\Pages\CreateCategory::class)
+            ->fillForm([
+                'name' => ['en' => 'Pest Control', 'hi' => 'कीट नियंत्रण', 'gu' => 'જંતુ નિયંત્રણ'],
+                'slug' => 'pest-control',
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $category = Category::where('slug', 'pest-control')->sole();
+
+        $this->assertSame('Pest Control', $category->getTranslation('name', 'en'));
+        $this->assertSame('कीट नियंत्रण', $category->getTranslation('name', 'hi'));
+        $this->assertSame('જંતુ નિયંત્રણ', $category->getTranslation('name', 'gu'));
+    }
+
+    /**
+     * The edit form is filled from raw attributes, where the column is the
+     * stored JSON string — each language has to be split back out or the
+     * inputs open empty and the next save wipes the translations.
+     */
+    public function test_the_edit_form_opens_with_each_language_filled_in(): void
+    {
+        $category = Category::factory()->create([
+            'name' => ['en' => 'Plumbing', 'hi' => 'प्लंबिंग'],
+        ]);
+
+        Livewire::test(EditCategory::class, ['record' => $category->getKey()])
+            ->assertFormSet([
+                'name.en' => 'Plumbing',
+                'name.hi' => 'प्लंबिंग',
+            ])
+            ->fillForm(['name' => ['en' => 'Plumbing', 'hi' => 'प्लंबिंग', 'gu' => 'પ્લમ્બિંગ']])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $category->refresh();
+        $this->assertSame('प्लंबिंग', $category->getTranslation('name', 'hi'));
+        $this->assertSame('પ્લમ્બિંગ', $category->getTranslation('name', 'gu'));
+    }
+
+    public function test_english_is_required_but_other_languages_are_optional(): void
+    {
+        Livewire::test(CategoryResource\Pages\CreateCategory::class)
+            ->fillForm(['name' => ['hi' => 'कीट नियंत्रण'], 'slug' => 'pest'])
+            ->call('create')
+            ->assertHasFormErrors(['name.en' => 'required']);
+    }
+
     public function test_a_duplicate_slug_is_rejected(): void
     {
         Category::factory()->create(['slug' => 'plumbing']);
 
         Livewire::test(CategoryResource\Pages\CreateCategory::class)
             ->fillForm([
-                'name' => 'Plumbing',
+                'name' => ['en' => 'Plumbing'],
                 'slug' => 'plumbing',
             ])
             ->call('create')

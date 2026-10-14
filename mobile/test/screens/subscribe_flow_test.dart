@@ -271,6 +271,34 @@ void main() {
     },
   );
 
+  testWidgets(
+    'refreshFreeTrialCapAPI picks up a cap the admin changed after the screen opened',
+    (tester) async {
+      final fake = _RecordingSubscribeDataSource()..settingsFreeTrialMaxDays = 15;
+      DataSource.instance = fake;
+
+      final controller = _buildController();
+
+      await tester.pumpWidget(GetMaterialApp(home: const Scaffold(body: SizedBox())));
+      await controller.fetchMasterDataAPI();
+      expect(controller.freeTrialMaxDays, 15);
+
+      // Admin raises the cap mid-flow; the next sheet open must see it.
+      fake.settingsFreeTrialMaxDays = 20;
+      await controller.refreshFreeTrialCapAPI();
+      expect(controller.freeTrialMaxDays, 20);
+
+      // And a lowered cap pulls an already-chosen duration down with it.
+      controller.setFreeTrialDays(18);
+      fake.settingsFreeTrialMaxDays = 10;
+      await controller.refreshFreeTrialCapAPI();
+      expect(controller.freeTrialMaxDays, 10);
+      expect(controller.freeTrialDays, 10);
+
+      controller.onClose();
+    },
+  );
+
   group('SubscriptionConfirmationController', () {
     test('the share message carries the login email and temp password', () {
       final controller = SubscriptionConfirmationController(

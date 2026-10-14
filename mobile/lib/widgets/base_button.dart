@@ -39,7 +39,9 @@ class BaseRaisedButton extends ElevatedButton {
             shape: shape ??
                 WidgetStateProperty.all<RoundedRectangleBorder>(
                   RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(borderRadius ?? 10.getSize),
+                    // Radius, padding and label size match the provider
+                    // app's BaseRaisedButton.
+                    borderRadius: BorderRadius.circular(borderRadius ?? 12.getSize),
                     side: BorderSide(
                       color: borderColor ?? Colors.transparent,
                       width: borderWidth ?? 1.getSize,
@@ -50,7 +52,7 @@ class BaseRaisedButton extends ElevatedButton {
             elevation: WidgetStateProperty.all(0),
             padding: WidgetStateProperty.all<EdgeInsetsGeometry>(
               EdgeInsets.symmetric(
-                vertical: buttonVerticalPadding ?? Utils.getSize(15),
+                vertical: buttonVerticalPadding ?? Utils.getSize(14),
                 horizontal: buttonHorizontalPadding ?? Utils.getSize(16),
               ),
             ),
@@ -108,9 +110,9 @@ class _Label extends StatelessWidget {
       // is what the design language calls for. (Under the old teal-400 accent
       // this defaulted to dark ink, where white genuinely failed.)
       color: textColor ?? ColorRes.whiteColor,
-      fontSize: fontSize ?? Utils.getFontSize(16),
+      fontSize: fontSize ?? Utils.getFontSize(12),
       fontWeight: fontWeight ?? FontWeight.w500,
-      fontFamily: fontFamily ?? FontFamily.dmSans,
+      fontFamily: fontFamily ?? FontFamily.poppins,
       textAlign: TextAlign.center,
       maxLines: maxLines,
       overflow: overflow,

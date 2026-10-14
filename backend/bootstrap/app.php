@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\RequireApprovedAccount;
 use App\Http\Middleware\RequirePasswordChange;
 use App\Http\Middleware\RolesMiddleware;
+use App\Http\Middleware\SetLocaleFromRequest;
 use App\Http\Responses\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -26,12 +28,23 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RolesMiddleware::class,
         ]);
 
-        // Appended to the whole api group rather than named per-route: a
-        // forced password change that only applies to routes someone
-        // remembered to tag is not enforcement. The middleware itself
-        // allows change-password and logout through.
+        // Both are appended to the whole api group rather than named
+        // per-route: a gate that only applies to routes someone remembered
+        // to tag is not enforcement. Each middleware carries its own
+        // allowlist of the routes that must stay reachable (logout always
+        // among them).
+        //
+        // Order matters. Password change runs first because a user who has
+        // both problems should be sent to the change-password screen, not
+        // left staring at a pending notice they cannot act on.
         $middleware->api(append: [
             RequirePasswordChange::class,
+            RequireApprovedAccount::class,
+        ]);
+
+        // First, so even an early refusal is formed in the request's locale.
+        $middleware->api(prepend: [
+            SetLocaleFromRequest::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

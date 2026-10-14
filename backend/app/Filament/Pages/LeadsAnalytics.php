@@ -43,6 +43,11 @@ class LeadsAnalytics extends Page implements HasTable
 
     protected static string $view = 'filament.pages.leads-analytics';
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function canAccess(): bool
     {
         return Auth::user()?->can('viewAny', Lead::class) ?? false;
@@ -83,6 +88,19 @@ class LeadsAnalytics extends Page implements HasTable
                 TextColumn::make('channel')
                     ->badge(),
 
+                // Approximate: tap Call → back in the customer app, so it
+                // includes ringing. Under 30 seconds usually means the call
+                // was not answered.
+                TextColumn::make('call_duration_seconds')
+                    ->label('Call length (approx.)')
+                    ->sortable()
+                    ->placeholder('—')
+                    ->formatStateUsing(fn (?int $state): string => $state === null
+                        ? '—'
+                        : sprintf('~%d:%02d', intdiv($state, 60), $state % 60))
+                    ->color(fn (?int $state): ?string => $state !== null && $state < 30 ? 'warning' : null)
+                    ->tooltip('Approximate — from tapping Call to returning to the app, so it includes ringing time.'),
+
                 TextColumn::make('created_at')
                     ->label('When')
                     ->dateTime()
@@ -105,7 +123,9 @@ class LeadsAnalytics extends Page implements HasTable
                 // relationship() filter.
                 SelectFilter::make('category_id')
                     ->label('Category')
-                    ->options(fn () => Category::query()->orderBy('name')->pluck('name', 'id'))
+                    // get() before pluck(): a query-builder pluck returns
+                    // the raw per-language JSON rather than the name.
+                    ->options(fn () => Category::query()->orderBy('name')->get()->pluck('name', 'id'))
                     ->query(function (Builder $query, array $data) {
                         if (blank($data['value'] ?? null)) {
                             return $query;
@@ -116,6 +136,18 @@ class LeadsAnalytics extends Page implements HasTable
                             fn (Builder $subcategoryQuery) => $subcategoryQuery->where('category_id', $data['value'])
                         );
                     }),
+
+                SelectFilter::make('channel')
+                    ->options(['call' => 'Call', 'whatsapp' => 'WhatsApp']),
+
+                // Likely unanswered: the customer was back in the app
+                // within half a minute.
+                Filter::make('short_calls')
+                    ->label('Short calls (under 30 sec)')
+                    ->query(fn (Builder $query) => $query
+                        ->where('channel', 'call')
+                        ->whereNotNull('call_duration_seconds')
+                        ->where('call_duration_seconds', '<', 30)),
 
                 Filter::make('date_range')
                     ->label('Date range')

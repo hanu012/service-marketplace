@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Subscription\ChangeSubscriptionPlanRequest;
 use App\Http\Requests\Subscription\PurchaseAddOnRequest;
+use App\Http\Requests\Subscription\RenewSubscriptionRequest;
 use App\Http\Requests\Subscription\StoreSubscriptionRequest;
 use App\Http\Resources\SubscriptionAddonResource;
 use App\Http\Resources\SubscriptionResource;
@@ -12,6 +13,7 @@ use App\Http\Responses\ApiResponse;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Vendor;
+use App\Services\Payments\PaymentGatewayException;
 use App\Services\SubscriptionService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -45,6 +47,10 @@ class SubscriptionController extends Controller
                 actor: $request->user(),
                 idempotencyKey: $request->header('Idempotency-Key'),
             );
+        } catch (PaymentGatewayException $e) {
+            report($e);
+
+            return $this->gatewayUnavailable();
         } catch (QueryException $e) {
             // The race HandleIdempotentSubscription's pre-check cannot
             // close on its own: two near-simultaneous requests with the
@@ -79,6 +85,55 @@ class SubscriptionController extends Controller
     }
 
     /**
+     * Renewal — see SubscriptionService::renew(). Same Idempotency-Key
+     * handling as store(): HandleIdempotentSubscription replays an earlier
+     * success before validation runs.
+     */
+    public function renew(RenewSubscriptionRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $vendor = Vendor::findOrFail($data['vendor_id']);
+        $plan = Plan::findOrFail($data['plan_id']);
+
+        try {
+            $subscription = $this->subscriptions->renew(
+                vendor: $vendor,
+                plan: $plan,
+                categoryIds: $data['category_ids'],
+                subcategoryIds: $data['subcategory_ids'],
+                zoneIds: $data['zone_ids'],
+                paymentMode: $data['payment_mode'],
+                actor: $request->user(),
+                idempotencyKey: $request->header('Idempotency-Key'),
+            );
+        } catch (PaymentGatewayException $e) {
+            report($e);
+
+            return $this->gatewayUnavailable();
+        } catch (QueryException $e) {
+            if (! $this->isDuplicateIdempotencyKey($e)) {
+                throw $e;
+            }
+
+            $existing = $this->subscriptions->findByIdempotencyKey($request->header('Idempotency-Key'));
+
+            return ApiResponse::success([
+                'subscription' => new SubscriptionResource(
+                    $existing->load(['plan', 'items', 'payments', 'commission'])
+                ),
+            ]);
+        }
+
+        return ApiResponse::success([
+            'subscription' => new SubscriptionResource(
+                $subscription->load(['plan', 'items', 'payments', 'commission'])
+            ),
+            'vendor' => ['id' => $vendor->id, 'status' => $vendor->fresh()->status],
+        ], 201);
+    }
+
+    /**
      * Upgrade/downgrade (SPEC section 3 item 6 / section 6, task 4.7).
      * `$subscription` is the OLD, still-active row (route-bound) — by
      * the time this runs it has already passed
@@ -102,6 +157,10 @@ class SubscriptionController extends Controller
                 actor: $request->user(),
                 idempotencyKey: $request->header('Idempotency-Key'),
             );
+        } catch (PaymentGatewayException $e) {
+            report($e);
+
+            return $this->gatewayUnavailable();
         } catch (QueryException $e) {
             if (! $this->isDuplicateIdempotencyKey($e)) {
                 throw $e;
@@ -145,6 +204,10 @@ class SubscriptionController extends Controller
                 paymentMode: $data['payment_mode'],
                 idempotencyKey: $request->header('Idempotency-Key'),
             );
+        } catch (PaymentGatewayException $e) {
+            report($e);
+
+            return $this->gatewayUnavailable();
         } catch (QueryException $e) {
             if (! str_contains($e->getMessage(), 'idempotency_key')) {
                 throw $e;
@@ -156,6 +219,20 @@ class SubscriptionController extends Controller
         }
 
         return ApiResponse::success(['addon' => new SubscriptionAddonResource($addon)], 201);
+    }
+
+    /**
+     * Razorpay is switched on but could not create the link. Everything
+     * rolled back and the Idempotency-Key was never stored, so the app can
+     * simply retry — or the salesman can take cash instead.
+     */
+    private function gatewayUnavailable(): JsonResponse
+    {
+        return ApiResponse::error(
+            'PAYMENT_GATEWAY_UNAVAILABLE',
+            'Online payment is unavailable right now. Please try again, or choose another payment mode.',
+            503
+        );
     }
 
     private function isDuplicateIdempotencyKey(QueryException $e): bool

@@ -19,6 +19,9 @@ class CustomerRegisterView extends StatelessWidget {
           subtitle: StringRes.customerRegisterDesc,
           formKey: controller.formKey,
           showBack: true,
+          // Login was replaced (Get.off), not pushed under this screen,
+          // so back swaps to it the same way the footer link does.
+          onBack: () => Get.off(() => const CustomerLoginView()),
           fields: [
             AuthTextField(
               label: StringRes.fullName,

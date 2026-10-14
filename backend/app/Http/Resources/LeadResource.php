@@ -27,6 +27,9 @@ class LeadResource extends JsonResource
             'subcategory_name' => $this->subcategory?->name,
             'zone_name' => $this->zone?->name,
             'channel' => $this->channel,
+            // Approximate call length in seconds; null for WhatsApp or when
+            // the customer app did not report one.
+            'call_duration_seconds' => $this->call_duration_seconds,
             'created_at' => $this->created_at?->toIso8601String(),
             'review_requested_at' => $this->review_requested_at?->toIso8601String(),
             'has_review' => $this->relationLoaded('review') ? $this->review !== null : $this->review()->exists(),

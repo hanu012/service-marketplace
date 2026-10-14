@@ -24,6 +24,9 @@ class VendorRegisterView extends StatelessWidget {
           subtitle: StringRes.vendorRegisterDesc,
           formKey: controller.formKey,
           showBack: true,
+          // Login was replaced (Get.off), not pushed under this screen,
+          // so back swaps to it the same way the footer link does.
+          onBack: () => Get.off(() => const VendorLoginView()),
           fields: [
             AuthTextField(
               label: StringRes.fullName,

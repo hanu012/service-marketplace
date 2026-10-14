@@ -84,15 +84,15 @@ class EarningsView extends StatelessWidget {
           ).tr(),
           8.heightSpacer,
           BaseTextDMSans(
-            text: '₹${(amountPaise / 100).toStringAsFixed(2)}',
+            text: Utils.rupees(amountPaise),
             fontSize: 18,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: ColorRes.secondaryColor,
           ),
           4.heightSpacer,
           BaseTextDMSans(
             text: '$count ${tr(StringRes.commissionCount)}',
-            fontSize: 11,
+            fontSize: 10,
             color: ColorRes.grayColor,
           ),
         ],

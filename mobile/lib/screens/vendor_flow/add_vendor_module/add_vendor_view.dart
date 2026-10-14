@@ -250,8 +250,56 @@ class AddVendorView extends StatelessWidget {
   Widget locationTile(AddVendorController controller) {
     final hasLocation = controller.hasLocation;
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        locationOption(
+          icon: Icons.search,
+          label: StringRes.searchShopAddress,
+          onTap: controller.isCapturingLocation ? null : controller.searchShopAddress,
+        ),
+        10.heightSpacer,
+        locationOption(
+          icon: Icons.my_location_outlined,
+          label: StringRes.useCurrentLocation,
+          isLoading: controller.isCapturingLocation,
+          onTap: controller.isCapturingLocation ? null : controller.captureLocation,
+        ),
+        if (hasLocation) ...[
+          10.heightSpacer,
+          Row(
+            children: [
+              Icon(
+                Icons.check_circle_outline,
+                color: ColorRes.primaryColor,
+                size: 18.getSize,
+              ),
+              8.widthSpacer,
+              Expanded(
+                child: BaseTextDMSans(
+                  text: '${tr(StringRes.locationCaptured)} '
+                      '(${controller.latitude!.toStringAsFixed(5)}, '
+                      '${controller.longitude!.toStringAsFixed(5)})',
+                  fontSize: 12,
+                  color: ColorRes.secondaryColor,
+                  textAlign: TextAlign.start,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget locationOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    bool isLoading = false,
+  }) {
     return InkWell(
-      onTap: controller.isCapturingLocation ? null : controller.captureLocation,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(10.getSize),
       child: Container(
         padding: EdgeInsets.symmetric(
@@ -261,33 +309,31 @@ class AddVendorView extends StatelessWidget {
         decoration: BoxDecoration(
           color: ColorRes.surfaceElevatedColor,
           borderRadius: BorderRadius.circular(10.getSize),
-          border: Border.all(
-            color: hasLocation ? ColorRes.primaryColor : ColorRes.borderColor,
-          ),
+          border: Border.all(color: ColorRes.borderColor),
         ),
         child: Row(
           children: [
-            controller.isCapturingLocation
+            isLoading
                 ? SizedBox(
                     width: 20.getSize,
                     height: 20.getSize,
                     child: CupertinoActivityIndicator(color: ColorRes.primaryColor),
                   )
-                : Icon(
-                    hasLocation ? Icons.check_circle_outline : Icons.my_location_outlined,
-                    color: hasLocation ? ColorRes.primaryColor : ColorRes.grayColor,
-                    size: 20.getSize,
-                  ),
+                : Icon(icon, color: ColorRes.primaryColor, size: 20.getSize),
             12.widthSpacer,
             Expanded(
               child: BaseTextDMSans(
-                text: hasLocation
-                    ? '${tr(StringRes.locationCaptured)} (${controller.latitude!.toStringAsFixed(5)}, ${controller.longitude!.toStringAsFixed(5)})'
-                    : tr(StringRes.captureLocation),
-                fontSize: 13,
-                color: hasLocation ? ColorRes.secondaryColor : ColorRes.grayColor,
+                text: label,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: ColorRes.secondaryColor,
                 textAlign: TextAlign.start,
-              ),
+              ).tr(),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: ColorRes.grayColor,
+              size: 20.getSize,
             ),
           ],
         ),

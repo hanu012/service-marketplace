@@ -45,6 +45,40 @@ class VendorLeadController extends Controller
     }
 
     /**
+     * Counts for the vendor home "Recent calls" card. "Today" and "this
+     * week" are the platform's local day (India), not UTC — a call at 2 am
+     * IST belongs to that day, not the previous one.
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $vendor = $request->user()->vendor;
+
+        if ($vendor === null) {
+            return ApiResponse::error('NOT_FOUND', 'No vendor profile exists for this account.', 404);
+        }
+
+        $timezone = 'Asia/Kolkata';
+        $todayStart = now($timezone)->startOfDay()->utc();
+        $weekStart = now($timezone)->startOfDay()->subDays(6)->utc();
+
+        $leads = Lead::query()->where('vendor_id', $vendor->id);
+
+        $averageSeconds = (clone $leads)
+            ->where('channel', 'call')
+            ->whereNotNull('call_duration_seconds')
+            ->where('created_at', '>=', now()->subDays(30))
+            ->avg('call_duration_seconds');
+
+        return ApiResponse::success([
+            'calls_today' => (clone $leads)->where('channel', 'call')->where('created_at', '>=', $todayStart)->count(),
+            'whatsapp_today' => (clone $leads)->where('channel', 'whatsapp')->where('created_at', '>=', $todayStart)->count(),
+            'calls_last_7_days' => (clone $leads)->where('channel', 'call')->where('created_at', '>=', $weekStart)->count(),
+            // Approximate, over the last 30 days; null with nothing to average.
+            'average_call_seconds' => $averageSeconds === null ? null : (int) round((float) $averageSeconds),
+        ]);
+    }
+
+    /**
      * SPEC section 3 item 8: "send a review request — scoped to a
      * specific lead only, not to an arbitrary customer." Once per lead,
      * ever (see the migration's own docblock) — rejects a second

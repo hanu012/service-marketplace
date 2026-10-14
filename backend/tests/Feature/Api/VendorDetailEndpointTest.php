@@ -92,6 +92,26 @@ class VendorDetailEndpointTest extends TestCase
             ->assertJsonPath('data.services.0.category_id', $subcategory->category_id);
     }
 
+    public function test_a_deactivated_subcategory_is_not_listed_as_a_service(): void
+    {
+        [$vendor, , $subcategory] = $this->activeVendorWithSubscription();
+        $subcategory->update(['is_active' => false]);
+
+        $this->getJson("/api/vendors/{$vendor->id}/detail")
+            ->assertOk()
+            ->assertJsonCount(0, 'data.services');
+    }
+
+    public function test_a_subcategory_under_a_deactivated_category_is_not_listed(): void
+    {
+        [$vendor, , $subcategory] = $this->activeVendorWithSubscription();
+        $subcategory->category->update(['is_active' => false]);
+
+        $this->getJson("/api/vendors/{$vendor->id}/detail")
+            ->assertOk()
+            ->assertJsonCount(0, 'data.services');
+    }
+
     public function test_a_vendor_with_no_active_subscription_is_not_found(): void
     {
         $user = User::factory()->role(UserRole::Vendor)->create(['must_change_password' => false]);
@@ -190,6 +210,20 @@ class VendorDetailEndpointTest extends TestCase
         $this->assertIsNumeric($distance);
         $this->assertGreaterThan(0, $distance);
         $this->assertLessThan(5, $distance); // ~1km at this latitude, sanity bound
+    }
+
+    public function test_distance_is_null_when_the_vendor_has_no_location(): void
+    {
+        [$vendor] = $this->activeVendorWithSubscription();
+        $vendor->update(['latitude' => null, 'longitude' => null]);
+
+        // Used to measure from 0,0 and report thousands of kilometres.
+        $this->getJson("/api/vendors/{$vendor->id}/detail?".http_build_query([
+            'latitude' => 23.03,
+            'longitude' => 72.56,
+        ]))
+            ->assertOk()
+            ->assertJsonPath('data.distance_km', null);
     }
 
     public function test_distance_is_null_when_no_point_is_given(): void

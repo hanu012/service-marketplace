@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\ApprovalStatus;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\User;
@@ -30,6 +31,11 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            // Approved by default so the hundreds of tests that just need a
+            // working account are not all rewritten to approve one first.
+            // Tests about the gate itself use ->pending() / ->rejected().
+            'approval_status' => ApprovalStatus::Approved,
+            'approval_decided_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
             'role' => UserRole::Customer,
@@ -69,11 +75,38 @@ class UserFactory extends Factory
 
     /**
      * Indicate that the model's email address should be unverified.
+     *
+     * Note this no longer gates anything — admin approval replaced email
+     * verification as the only gate (SPEC section 3.1). Kept because the
+     * column is still populated for admin-created accounts; use
+     * ->pending() for a user who cannot actually use the API.
      */
     public function unverified(): static
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /**
+     * A self-registered account still waiting on an admin decision.
+     */
+    public function pending(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'approval_status' => ApprovalStatus::Pending,
+            'approval_decided_at' => null,
+            'approval_decided_by' => null,
+            'approval_note' => null,
+        ]);
+    }
+
+    public function rejected(string $reason = 'Could not verify the business.'): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'approval_status' => ApprovalStatus::Rejected,
+            'approval_decided_at' => now(),
+            'approval_note' => $reason,
         ]);
     }
 }

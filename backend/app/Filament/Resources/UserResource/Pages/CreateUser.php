@@ -2,10 +2,9 @@
 
 namespace App\Filament\Resources\UserResource\Pages;
 
+use App\Enums\ApprovalStatus;
 use App\Filament\Resources\UserResource;
 use App\Models\User;
-use Filament\Notifications\Actions\Action;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Hash;
 
@@ -20,15 +19,15 @@ class CreateUser extends CreateRecord
     private string $temporaryPassword = '';
 
     /**
-     * Generates the temp password and marks the account verified.
+     * Generates the temp password and approves the account.
      *
      * SPEC section 5.2: creating a salesman generates a temp password shown
      * once. Every role gets one here, because an admin-created account has no
      * password otherwise and there is no self-service signup for it.
      *
-     * email_verified_at is set because an admin vouches for the account — the
-     * behaviour User::requiresEmailVerification() already documents for
-     * admin- and salesman-created accounts.
+     * The account is approved on creation because an admin vouching for it
+     * IS the approval — sending it to the pending queue would mean the admin
+     * who just typed it in has to go and approve their own work.
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
@@ -38,10 +37,11 @@ class CreateUser extends CreateRecord
         // save; the plaintext never reaches the database.
         $data['password'] = $this->temporaryPassword;
 
-        // email_verified_at is deliberately NOT set here — it is absent from
-        // User::$fillable, so mass assignment silently drops it. It is marked
-        // in afterCreate() through the framework's own method instead, rather
-        // than widening fillable for a field no user input should ever set.
+        // approval_status is deliberately NOT set here — it is absent from
+        // User::$fillable, so mass assignment silently drops it. It is
+        // recorded in afterCreate() through recordApprovalDecision()
+        // instead, rather than widening fillable for a field no user input
+        // should ever set.
 
         return $data;
     }
@@ -56,10 +56,15 @@ class CreateUser extends CreateRecord
         /** @var User $user */
         $user = $this->getRecord();
 
-        // The admin vouches for this account, so there is no address to
-        // confirm — the behaviour User::requiresEmailVerification() documents
-        // for admin- and salesman-created accounts.
-        $user->markEmailAsVerified();
+        // The admin filling in this form is the approval (SPEC section 3.1).
+        // Recorded against them by name so the audit trail shows who let the
+        // account in, the same as it would for a decision taken from the
+        // pending queue.
+        $user->recordApprovalDecision(
+            ApprovalStatus::Approved,
+            auth()->user(),
+            'Created directly by an administrator.',
+        );
 
         // Every account created here is handed a temporary password the admin
         // read out or messaged over, so every one of them must set their own
@@ -72,26 +77,12 @@ class CreateUser extends CreateRecord
         // — are not asked to change it immediately.
         $user->forceFill(['must_change_password' => true])->saveQuietly();
 
-        Notification::make()
-            ->title('Temporary password for '.$user->name)
-            ->body(
-                '**'.$this->temporaryPassword.'**'
-                ."\n\nShare it with them now — this is the only time it is shown. "
-                .'It cannot be recovered afterwards; a forgotten password has to be reset by email.'
-            )
-            ->persistent()
-            ->success()
-            ->actions([
-                Action::make('copy')
-                    ->label('Copy password')
-                    ->color('gray')
-                    // Filament ships the clipboard helper with its notifications.
-                    ->extraAttributes([
-                        'x-on:click' => 'window.navigator.clipboard.writeText('
-                            .json_encode($this->temporaryPassword).')',
-                    ]),
-            ])
-            ->send();
+        UserResource::sendTemporaryPasswordNotification(
+            $user,
+            $this->temporaryPassword,
+            'Share it with them now — this is the only time it is shown. '
+            .'It cannot be recovered afterwards; a forgotten password is replaced by issuing a new temporary one from the Users list.',
+        );
     }
 
     /**

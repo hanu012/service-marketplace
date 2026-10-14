@@ -38,6 +38,14 @@ class SubcategoryModel {
   String? iconUrl;
   int? sortOrder;
 
+  /// 'installation' | 'repair' | 'maintenance', or null when the admin
+  /// has not classified this subcategory — backs the filter chips on the
+  /// customer subcategories screen.
+  String? serviceType;
+
+  /// Shows a "Popular" badge and surfaces this service first.
+  bool isPopular;
+
   SubcategoryModel({
     this.id,
     this.categoryId,
@@ -45,6 +53,8 @@ class SubcategoryModel {
     this.slug,
     this.iconUrl,
     this.sortOrder,
+    this.serviceType,
+    this.isPopular = false,
   });
 
   SubcategoryModel.fromJson(Map<String, dynamic> json)
@@ -53,5 +63,7 @@ class SubcategoryModel {
         name = json['name'] as String?,
         slug = json['slug'] as String?,
         iconUrl = json['icon_url'] as String?,
-        sortOrder = json['sort_order'] as int?;
+        sortOrder = json['sort_order'] as int?,
+        serviceType = json['service_type'] as String?,
+        isPopular = json['is_popular'] as bool? ?? false;
 }

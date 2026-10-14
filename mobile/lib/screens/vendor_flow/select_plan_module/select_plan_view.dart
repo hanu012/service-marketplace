@@ -11,11 +11,16 @@ class SelectPlanView extends StatelessWidget {
   final String businessName;
   final String loginEmail;
 
+  /// Renewing a vendor who already had a plan (salesman vendor detail →
+  /// Renew), rather than a first subscription.
+  final bool isRenewal;
+
   const SelectPlanView({
     super.key,
     required this.vendorId,
     required this.businessName,
     required this.loginEmail,
+    this.isRenewal = false,
   });
 
   @override
@@ -25,6 +30,7 @@ class SelectPlanView extends StatelessWidget {
         vendorId: vendorId,
         businessName: businessName,
         loginEmail: loginEmail,
+        isRenewal: isRenewal,
       ),
       dispose: (_) => Get.delete<SelectPlanController>(),
       builder: (controller) {
@@ -107,7 +113,7 @@ class SelectPlanView extends StatelessWidget {
             ),
             6.heightSpacer,
             BaseTextDMSans(
-              text: '₹${plan.priceRupees ?? '0'} '
+              text: '${Utils.rupeesWhole(plan.pricePaise ?? 0)} '
                   '(${plan.durationDays ?? 0} ${tr(StringRes.perDay)})',
               fontSize: 14,
               fontWeight: FontWeight.w500,
@@ -141,7 +147,7 @@ class SelectPlanView extends StatelessWidget {
       ),
       child: BaseTextDMSans(
         text: label,
-        fontSize: 11,
+        fontSize: 10,
         color: ColorRes.grayColor,
       ),
     );

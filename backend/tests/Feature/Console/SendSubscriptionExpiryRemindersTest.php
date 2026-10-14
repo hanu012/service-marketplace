@@ -131,9 +131,8 @@ class SendSubscriptionExpiryRemindersTest extends TestCase
     public function test_a_subscription_exactly_1_day_out_gets_all_three_thresholds_stamped_at_once(): void
     {
         // Never seen by this job before (e.g. the feature just
-        // shipped) — a legitimate one-time catch-up, not a bug: T-15
-        // and T-7 both would have fired days ago had the job existed
-        // then, so they fire now, alongside T-1.
+        // shipped). All three thresholds are stamped so none fires
+        // later — but only ONE push goes out, saying the real time left.
         [, $subscription] = $this->vendorWithSubscription(now()->addDay());
 
         $this->artisan('subscriptions:send-expiry-reminders')->assertSuccessful();
@@ -142,6 +141,56 @@ class SendSubscriptionExpiryRemindersTest extends TestCase
         $this->assertNotNull($reloaded->reminder_sent_t15_at);
         $this->assertNotNull($reloaded->reminder_sent_t7_at);
         $this->assertNotNull($reloaded->reminder_sent_t1_at);
+
+        $log = NotificationLog::where('type', 'subscription_expiring')->sole();
+        $this->assertStringContainsString('expires in 1 day', $log->body);
+    }
+
+    /**
+     * The bug this fixes: a 7-day free trial is inside both the 15- and
+     * 7-day windows on its first day, and got two pushes at once — one
+     * saying "15 days".
+     */
+    public function test_a_7_day_trial_gets_one_reminder_with_the_real_days_left(): void
+    {
+        [, $subscription] = $this->vendorWithSubscription(now()->addDays(7));
+
+        $this->artisan('subscriptions:send-expiry-reminders')->assertSuccessful();
+
+        $log = NotificationLog::where('type', 'subscription_expiring')->sole();
+        $this->assertStringContainsString('expires in 7 days', $log->body);
+        $this->assertStringNotContainsString('15 days', $log->body);
+
+        $reloaded = $subscription->fresh();
+        $this->assertNotNull($reloaded->reminder_sent_t15_at);
+        $this->assertNotNull($reloaded->reminder_sent_t7_at);
+        $this->assertNull($reloaded->reminder_sent_t1_at);
+    }
+
+    public function test_the_last_day_reminder_still_follows_later(): void
+    {
+        [, $subscription] = $this->vendorWithSubscription(now()->addDays(7));
+
+        $this->artisan('subscriptions:send-expiry-reminders')->assertSuccessful();
+
+        // Six days later: one day left.
+        $this->travel(6)->days();
+        $this->artisan('subscriptions:send-expiry-reminders')->assertSuccessful();
+
+        $bodies = NotificationLog::where('type', 'subscription_expiring')->orderBy('id')->pluck('body')->all();
+        $this->assertCount(2, $bodies);
+        $this->assertStringContainsString('expires in 1 day', $bodies[1]);
+        $this->assertNotNull($subscription->fresh()->reminder_sent_t1_at);
+    }
+
+    public function test_a_plan_ending_today_says_today(): void
+    {
+        $this->vendorWithSubscription(now()->startOfDay());
+
+        $this->artisan('subscriptions:send-expiry-reminders')->assertSuccessful();
+
+        $log = NotificationLog::where('type', 'subscription_expiring')->sole();
+        $this->assertStringContainsString('expires today', $log->body);
     }
 
     public function test_running_twice_in_a_row_does_not_resend(): void

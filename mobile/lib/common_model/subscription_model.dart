@@ -12,6 +12,15 @@ class SubscriptionModel {
   String? endDate;
   int? pricePaise;
 
+  /// The payment's status — "pending" while a Razorpay payment link is
+  /// unpaid (only when Razorpay is switched on in admin Settings).
+  String? paymentStatus;
+  String? paymentLinkUrl;
+  String? paymentLinkExpiresAt;
+
+  /// The sale is waiting on the vendor paying the link; nothing is active.
+  bool get isAwaitingPayment => status == 'pending_payment' || paymentStatus == 'pending';
+
   SubscriptionModel({
     this.id,
     this.vendorId,
@@ -33,5 +42,9 @@ class SubscriptionModel {
         status = json['status'] as String?,
         startDate = json['start_date'] as String?,
         endDate = json['end_date'] as String?,
-        pricePaise = json['price_paise'] as int?;
+        pricePaise = json['price_paise'] as int?,
+        paymentStatus = (json['payment'] as Map<String, dynamic>?)?['status'] as String?,
+        paymentLinkUrl = (json['payment'] as Map<String, dynamic>?)?['payment_link_url'] as String?,
+        paymentLinkExpiresAt =
+            (json['payment'] as Map<String, dynamic>?)?['payment_link_expires_at'] as String?;
 }

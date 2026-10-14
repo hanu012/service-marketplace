@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:service_marketplace/common_model/common_response.dart';
 import 'package:service_marketplace/constants/flavor_config.dart';
 import 'package:service_marketplace/network/data_source.dart';
+import 'package:service_marketplace/screens/auth_flow/account_verification_module/account_verification_view.dart';
 import 'package:service_marketplace/screens/auth_flow/customer_home_module/customer_home_view.dart';
 import 'package:service_marketplace/screens/auth_flow/customer_login_module/customer_login_controller.dart';
 import 'package:service_marketplace/screens/auth_flow/customer_register_module/customer_register_controller.dart';
@@ -25,14 +26,24 @@ class _DeniedGeolocator extends GeolocatorPlatform {
 }
 
 /// Mirrors vendor_auth_test.dart — same conventions, trimmed to what's
-/// actually different for role=customer: no EMAIL_NOT_VERIFIED detour
-/// (customers aren't email-verification gated) and no token-less register
-/// response (a customer registration always issues a token immediately).
+/// actually different for role=customer: no business_name/phone fields.
+///
+/// The approval gate is NOT one of the differences any more. Customers were
+/// exempt from email verification; they are not exempt from admin approval
+/// (SPEC section 3.1), so both flows carry an approval_status the same way
+/// the vendor ones do.
 class _RecordingAuthDataSource extends DataSource {
   Map<String, dynamic>? capturedLoginBody;
   Map<String, dynamic>? capturedRegisterBody;
 
   bool loginSucceeds = true;
+
+  /// Defaults to approved so the existing happy-path tests keep asserting
+  /// what they were written to assert; the gate itself is covered by the
+  /// tests that set these to 'pending'.
+  String loginApprovalStatus = 'approved';
+  String registerApprovalStatus = 'approved';
+
   Map<String, List<String>>? registerFieldErrors;
 
   @override
@@ -56,6 +67,7 @@ class _RecordingAuthDataSource extends DataSource {
           'email': body['email'],
           'role': 'customer',
           'must_change_password': false,
+          'approval_status': loginApprovalStatus,
         },
         'token': '1|abc',
       },
@@ -99,6 +111,7 @@ class _RecordingAuthDataSource extends DataSource {
           'email': body['email'],
           'role': 'customer',
           'must_change_password': false,
+          'approval_status': registerApprovalStatus,
         },
         'token': '1|abc',
       },
@@ -166,6 +179,26 @@ void main() {
       controller.onClose();
     });
 
+    /// Customers were exempt from the old email-verification gate. They are
+    /// not exempt from this one, and that is the whole point of the change.
+    testWidgets('an unapproved customer lands on the verification screen', (
+      tester,
+    ) async {
+      final fake = _RecordingAuthDataSource()..loginApprovalStatus = 'pending';
+      DataSource.instance = fake;
+
+      final controller = _fillLoginController();
+      await _pumpLoginForm(tester, controller);
+
+      await controller.loginAPI();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AccountVerificationView), findsOneWidget);
+      expect(find.byType(CustomerHomeView), findsNothing);
+
+      controller.onClose();
+    });
+
     testWidgets('invalid credentials do not navigate anywhere', (tester) async {
       final fake = _RecordingAuthDataSource()..loginSucceeds = false;
       DataSource.instance = fake;
@@ -177,6 +210,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(CustomerHomeView), findsNothing);
+      expect(find.byType(AccountVerificationView), findsNothing);
 
       controller.onClose();
     });
@@ -256,7 +290,32 @@ void main() {
       controller.onClose();
     });
 
-    testWidgets('a successful registration lands on CustomerHomeView directly', (tester) async {
+    /// What a real registration does: the account comes back Pending, so
+    /// the customer goes to the verification screen rather than home.
+    testWidgets('a registration lands on the verification screen, not home', (
+      tester,
+    ) async {
+      final fake = _RecordingAuthDataSource()..registerApprovalStatus = 'pending';
+      DataSource.instance = fake;
+
+      final controller = buildController();
+      await pumpRegisterForm(tester, controller);
+
+      await controller.registerAPI();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AccountVerificationView), findsOneWidget);
+      expect(find.byType(CustomerHomeView), findsNothing);
+
+      controller.onClose();
+    });
+
+    /// The other side of the branch — kept so an approved account is still
+    /// proven to reach home, in case approval ever becomes automatic for
+    /// some path.
+    testWidgets('an already-approved registration lands on CustomerHomeView', (
+      tester,
+    ) async {
       final fake = _RecordingAuthDataSource();
       DataSource.instance = fake;
 

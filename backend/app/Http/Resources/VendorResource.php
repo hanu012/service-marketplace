@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,6 +26,8 @@ class VendorResource extends JsonResource
             'phone' => $this->phone,
             'email' => $this->whenLoaded('user', fn () => $this->user->email),
             'address' => $this->address,
+            'city' => $this->city,
+            'about' => $this->about,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
             'status' => $this->status,
@@ -48,7 +51,40 @@ class VendorResource extends JsonResource
             // resubscribing from scratch instead.
             'has_active_subscription' => $this->currentActiveSubscription() !== null,
 
+            // A sale waiting on its Razorpay payment link (only while
+            // Razorpay is switched on). The vendor app shows a "waiting for
+            // payment" screen instead of plan selection. The link itself is
+            // not sent: it reached the vendor by SMS, and the app does not
+            // take the payment itself.
+            'pending_payment' => $this->pendingPaymentSummary(),
+
             'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{plan_name: ?string, amount_paise: int, expires_at: ?string}|null
+     */
+    private function pendingPaymentSummary(): ?array
+    {
+        $payment = Payment::query()
+            ->where('status', 'pending')
+            ->whereNull('subscription_addon_id')
+            ->whereHas('subscription', fn ($query) => $query
+                ->where('vendor_id', $this->id)
+                ->where('status', 'pending_payment'))
+            ->with('subscription.plan')
+            ->latest()
+            ->first();
+
+        if ($payment === null) {
+            return null;
+        }
+
+        return [
+            'plan_name' => $payment->subscription?->plan?->name,
+            'amount_paise' => $payment->amount_paise,
+            'expires_at' => $payment->payment_link_expires_at?->toIso8601String(),
         ];
     }
 }

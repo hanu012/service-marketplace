@@ -22,6 +22,20 @@ return [
         'key' => env('RESEND_API_KEY'),
     ],
 
+    /*
+     * Razorpay Payment Links. Used only while the admin setting
+     * `razorpay_payment_links_enabled` is on. Test-mode keys start
+     * rzp_test_; the webhook secret is the one set on the webhook in the
+     * Razorpay dashboard (not the key secret).
+     */
+    'razorpay' => [
+        'key_id' => env('RAZORPAY_KEY_ID'),
+        'key_secret' => env('RAZORPAY_KEY_SECRET'),
+        'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET'),
+        // How long a link stays payable. Razorpay requires 15+ minutes.
+        'link_expiry_minutes' => (int) env('RAZORPAY_LINK_EXPIRY_MINUTES', 1440),
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),

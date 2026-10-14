@@ -38,6 +38,7 @@ class Subscription extends Model
         'duration_days',
         'free_trial_days',
         'previous_subscription_id',
+        'is_renewal',
         'idempotency_key',
         'reminder_sent_t15_at',
         'reminder_sent_t7_at',
@@ -51,6 +52,7 @@ class Subscription extends Model
             'end_date' => 'date',
             'price_paise' => 'integer',
             'duration_days' => 'integer',
+            'is_renewal' => 'boolean',
             'free_trial_days' => 'integer',
             'reminder_sent_t15_at' => 'datetime',
             'reminder_sent_t7_at' => 'datetime',
@@ -135,7 +137,12 @@ class Subscription extends Model
             default => throw new \InvalidArgumentException("Unknown quota resource: {$resource}"),
         };
 
-        $addonQuantity = $this->addons()->where('resource', $resource)->sum('quantity');
+        // Only paid add-ons: one bought online stays pending_payment until
+        // Razorpay confirms it.
+        $addonQuantity = $this->addons()
+            ->where('resource', $resource)
+            ->where('status', 'paid')
+            ->sum('quantity');
 
         return $baseMax + (int) $addonQuantity;
     }

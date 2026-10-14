@@ -1,7 +1,9 @@
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
+import '../account_verification_module/account_verification_view.dart';
 import '../change_password_module/change_password_view.dart';
+import '../forgot_password_module/forgot_password_view.dart';
 import '../salesman_home_module/salesman_home_view.dart';
 
 /// Salesman sign-in (SPEC section 2.1) — login only, no registration.
@@ -20,9 +22,38 @@ class SalesmanLoginController extends GetxController {
 
   bool obscurePassword = true;
 
+  /// Remembers the EMAIL only, never the password. This app stores no
+  /// credentials, and a temp-password flow makes that especially unwise —
+  /// the convenience being bought is not retyping an address.
+  bool rememberMe = false;
+
+  @override
+  void onInit() {
+    super.onInit();
+
+    final saved = Injector.prefs?.getString(PrefKeys.rememberedEmail) ?? '';
+
+    if (saved.isNotEmpty) {
+      emailController.text = saved;
+      rememberMe = true;
+    }
+  }
+
   void togglePasswordVisibility() {
     obscurePassword = !obscurePassword;
     update();
+  }
+
+  void toggleRememberMe(bool value) {
+    rememberMe = value;
+    update();
+  }
+
+  /// Opens "Forgot password?", which files a reset request for an admin —
+  /// the platform sends no mail, so there is no emailed link. Pushed with
+  /// Get.to (not offAll) so the user returns to this screen afterwards.
+  void openForgotPassword() {
+    Get.to(() => ForgotPasswordView(initialEmail: emailController.text.trim()));
   }
 
   Future<void> loginAPI() async {
@@ -63,7 +94,34 @@ class SalesmanLoginController extends GetxController {
       }
 
       UserModel userModel = UserModel.fromJson(commonResponse.data);
+
+      // The server's auth/login is shared across all three flavours and
+      // does not reject by role (it can't know which app is calling) — so
+      // a vendor or customer entering their own credentials here would
+      // otherwise sign in fine and only fail later, confusingly, on
+      // salesman-only endpoints. Reject it here instead.
+      if (userModel.role != 'salesman') {
+        if (userModel.authentication?.accessToken != null) {
+          await Injector.setAccessToken(userModel.authentication!.accessToken!);
+          await DataSource.instance.logoutAPI();
+        }
+        await Injector.clearUserData();
+        Utils.showToast(tr(StringRes.wrongAppForAccount), isError: true);
+        return;
+      }
+
       await Injector.setUserData(userModel);
+
+      // Persisted only on success: remembering an address that just failed
+      // to sign in would prefill a typo forever.
+      if (rememberMe) {
+        await Injector.prefs?.setString(
+          PrefKeys.rememberedEmail,
+          emailController.text.trim(),
+        );
+      } else {
+        await Injector.prefs?.remove(PrefKeys.rememberedEmail);
+      }
 
       // SPEC section 2.1: forced password change on first login. The server
       // enforces this too — every other endpoint returns
@@ -71,6 +129,15 @@ class SalesmanLoginController extends GetxController {
       // the user's sake, not the security boundary.
       if (userModel.mustChangePassword) {
         Utils.transitionWithOffAll(const ChangePasswordView());
+        return;
+      }
+
+      // A salesman is admin-created and so approved from the start, but an
+      // admin can revoke that later from the Users list — in which case
+      // this is the screen they get rather than a home screen whose every
+      // request the server would refuse.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
         return;
       }
 

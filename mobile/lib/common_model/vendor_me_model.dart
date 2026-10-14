@@ -6,9 +6,16 @@ class VendorMeModel {
   String? ownerName;
   String? phone;
   String? email;
+  String? address;
+  String? city;
+  String? about;
   String? status;
   bool hasActiveSubscription;
   ActiveSubscriptionModel? activeSubscription;
+
+  /// A sale waiting on its Razorpay payment link — routes the vendor to the
+  /// "Waiting for payment" screen instead of plan selection.
+  PendingPaymentModel? pendingPayment;
 
   VendorMeModel({
     this.id,
@@ -16,6 +23,9 @@ class VendorMeModel {
     this.ownerName,
     this.phone,
     this.email,
+    this.address,
+    this.city,
+    this.about,
     this.status,
     this.hasActiveSubscription = false,
     this.activeSubscription,
@@ -27,12 +37,36 @@ class VendorMeModel {
         ownerName = (json['vendor'] as Map<String, dynamic>?)?['owner_name'] as String?,
         phone = (json['vendor'] as Map<String, dynamic>?)?['phone'] as String?,
         email = (json['vendor'] as Map<String, dynamic>?)?['email'] as String?,
+        address = (json['vendor'] as Map<String, dynamic>?)?['address'] as String?,
+        city = (json['vendor'] as Map<String, dynamic>?)?['city'] as String?,
+        about = (json['vendor'] as Map<String, dynamic>?)?['about'] as String?,
         status = (json['vendor'] as Map<String, dynamic>?)?['status'] as String?,
         hasActiveSubscription =
             (json['vendor'] as Map<String, dynamic>?)?['has_active_subscription'] as bool? ?? false,
         activeSubscription = json['active_subscription'] is Map<String, dynamic>
             ? ActiveSubscriptionModel.fromJson(json['active_subscription'] as Map<String, dynamic>)
+            : null,
+        pendingPayment = (json['vendor'] as Map<String, dynamic>?)?['pending_payment'] is Map<String, dynamic>
+            ? PendingPaymentModel.fromJson(
+                (json['vendor'] as Map<String, dynamic>)['pending_payment'] as Map<String, dynamic>,
+              )
             : null;
+}
+
+/// `vendor.pending_payment` — the plan and amount a sent payment link is for.
+class PendingPaymentModel {
+  String? planName;
+  int? amountPaise;
+
+  /// ISO 8601.
+  String? expiresAt;
+
+  PendingPaymentModel({this.planName, this.amountPaise, this.expiresAt});
+
+  PendingPaymentModel.fromJson(Map<String, dynamic> json)
+      : planName = json['plan_name'] as String?,
+        amountPaise = json['amount_paise'] as int?,
+        expiresAt = json['expires_at'] as String?;
 }
 
 /// Nested in `VendorMeModel` — plan name, quota used/total per resource,
@@ -117,9 +151,15 @@ class SelectedServiceItemModel {
   int? id;
   String? name;
 
-  SelectedServiceItemModel({this.id, this.name});
+  /// Set on subcategories only, so the Services screen can list them under
+  /// the category they belong to. Null for categories and zones, which
+  /// have no parent.
+  int? categoryId;
+
+  SelectedServiceItemModel({this.id, this.name, this.categoryId});
 
   SelectedServiceItemModel.fromJson(Map<String, dynamic> json)
       : id = json['id'] as int?,
-        name = json['name'] as String?;
+        name = json['name'] as String?,
+        categoryId = json['category_id'] as int?;
 }

@@ -3,6 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Models\Setting;
+use App\Services\Payments\RazorpayClient;
+use App\Support\Languages;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -55,12 +58,16 @@ class SettingsPage extends Page implements HasForms
      * @var array<int, string>
      */
     private const KEYS = [
+        // free_grants_per_salesman_month and grace_period_days are left off
+        // the page on purpose (client request). They are still enforced at
+        // their stored values; leaving them out of this list is what keeps
+        // Save from overwriting them with nulls.
         'free_trial_max_days',
-        'free_grants_per_salesman_month',
-        'grace_period_days',
         'force_update_version',
         'maintenance_mode',
-        'bypass_email_verification',
+        'enabled_languages',
+        'razorpay_payment_links_enabled',
+        'call_tracking_enabled',
     ];
 
     public static function canAccess(): bool
@@ -72,11 +79,11 @@ class SettingsPage extends Page implements HasForms
     {
         $this->form->fill([
             'free_trial_max_days' => Setting::get('free_trial_max_days'),
-            'free_grants_per_salesman_month' => Setting::get('free_grants_per_salesman_month'),
-            'grace_period_days' => Setting::get('grace_period_days'),
             'force_update_version' => Setting::get('force_update_version'),
             'maintenance_mode' => Setting::get('maintenance_mode', false),
-            'bypass_email_verification' => Setting::get('bypass_email_verification', false),
+            'enabled_languages' => Languages::enabled(),
+            'razorpay_payment_links_enabled' => Setting::get('razorpay_payment_links_enabled', false),
+            'call_tracking_enabled' => Setting::get('call_tracking_enabled', true),
         ]);
     }
 
@@ -85,31 +92,30 @@ class SettingsPage extends Page implements HasForms
         return $form
             ->schema([
                 Section::make('Subscriptions')
-                    ->description('free_trial_max_days and free_grants_per_salesman_month are read by FreeTrialValidator today. grace_period_days is not read by anything yet — reserved for the expiry job (Phase 7).')
+                    ->description('Enforced when a salesman grants a free trial.')
                     ->schema([
                         TextInput::make('free_trial_max_days')
                             ->label('Maximum free trial length (days)')
                             ->numeric()
                             ->minValue(1)
                             ->required(),
-
-                        TextInput::make('free_grants_per_salesman_month')
-                            ->label('Free grants per salesman per month')
-                            ->numeric()
-                            ->minValue(1)
-                            ->required(),
-
-                        TextInput::make('grace_period_days')
-                            ->label('Grace period (days)')
-                            ->numeric()
-                            ->minValue(1)
-                            ->required()
-                            ->helperText('Not read by anything yet.'),
                     ])
                     ->columns(3),
 
+                Section::make('Payments')
+                    ->description('How "Online" payments are taken in the salesman and vendor apps. Cash and free trials are not affected.')
+                    ->schema([
+                        Toggle::make('razorpay_payment_links_enabled')
+                            ->label('Online payments via Razorpay')
+                            ->helperText(fn (): string => 'On: the vendor gets a Razorpay payment link by SMS, and the plan or add-on activates when it is paid. '
+                                .'Off: online payments are recorded as paid immediately (placeholder — no money is collected). '
+                                .(app(RazorpayClient::class)->isConfigured()
+                                    ? 'Razorpay keys are set in .env.'
+                                    : '⚠ Razorpay keys are NOT set in .env — with this on, online sales will be refused until they are.')),
+                    ]),
+
                 Section::make('App')
-                    ->description('Neither field below is enforced anywhere yet — no API middleware gate and no Flutter screen reads either one. Editable here ahead of that work, not functional yet.')
+                    ->description('Minimum app version and maintenance mode are not enforced anywhere yet — editable here ahead of that work. Enabled languages is live.')
                     ->schema([
                         TextInput::make('force_update_version')
                             ->label('Minimum app version')
@@ -118,21 +124,25 @@ class SettingsPage extends Page implements HasForms
                             ->rule('regex:/^\d+\.\d+\.\d+$/')
                             ->helperText('x.y.z format. Not enforced by any app yet.'),
 
+                        Toggle::make('call_tracking_enabled')
+                            ->label('Call tracking in apps')
+                            ->helperText('On: vendors see Recent calls on their home screen, customers see Profile → My calls, and each call is timed (approximately — includes ringing). Off: those are hidden; calls and the admin Leads page are unaffected. Apps pick up a change on their next launch.'),
+
                         Toggle::make('maintenance_mode')
                             ->label('Maintenance mode')
                             ->helperText('Not enforced by any app yet.'),
+
+                        CheckboxList::make('enabled_languages')
+                            ->label('Enabled languages')
+                            ->options(Languages::SUPPORTED)
+                            // English is the fallback for every missing
+                            // translation, so it cannot be switched off.
+                            ->disableOptionWhen(fn (string $value): bool => $value === Languages::ENGLISH)
+                            ->columns(3)
+                            ->helperText('Offered in each app under Profile → Language. English is always on. Someone using a language you switch off is moved back to English.')
+                            ->columnSpanFull(),
                     ])
                     ->columns(2),
-
-                Section::make('Development')
-                    ->description('Local stopgaps until the real integration lands. Keep these off in production.')
-                    ->schema([
-                        Toggle::make('bypass_email_verification')
-                            ->label('Bypass email verification')
-                            ->helperText('When on, self-registration sends no verification email. The '
-                                .'account is still created unverified and still cannot sign in until an '
-                                .'admin verifies it from the Users list.'),
-                    ]),
             ])
             ->statePath('data');
     }
@@ -175,6 +185,10 @@ class SettingsPage extends Page implements HasForms
     {
         if ($type === 'boolean') {
             return $value ? 'true' : 'false';
+        }
+
+        if ($type === 'json') {
+            return json_encode(array_values((array) $value));
         }
 
         return $value === null ? null : (string) $value;

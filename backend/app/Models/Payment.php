@@ -20,12 +20,15 @@ class Payment extends Model
 
     protected $fillable = [
         'subscription_id',
+        'subscription_addon_id',
         'amount_paise',
         'currency',
         'mode',
         'gateway',
         'gateway_order_id',
         'gateway_payment_id',
+        'payment_link_url',
+        'payment_link_expires_at',
         'status',
         'collected_by_salesman_id',
         'admin_verified_at',
@@ -36,12 +39,24 @@ class Payment extends Model
         return [
             'amount_paise' => 'integer',
             'admin_verified_at' => 'datetime',
+            'payment_link_expires_at' => 'datetime',
         ];
     }
 
     public function subscription(): BelongsTo
     {
         return $this->belongsTo(Subscription::class);
+    }
+
+    /** Set when this payment buys an add-on rather than the subscription. */
+    public function addon(): BelongsTo
+    {
+        return $this->belongsTo(SubscriptionAddon::class, 'subscription_addon_id');
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
     }
 
     public function collectedBySalesman(): BelongsTo

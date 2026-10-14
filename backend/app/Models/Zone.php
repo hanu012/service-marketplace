@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\PreventsDeletionWhileSubscribed;
+use App\Support\Languages;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -123,6 +124,56 @@ class Zone extends Model
             'type' => 'zone',
             'ids' => $this->descendantIds(),
         ]];
+    }
+
+    /**
+     * The vendors whose subscriptions cover this zone, for the admin's
+     * "In use" breakdown.
+     *
+     * Counts the subtree, matching countSubscriptionReferences(): a
+     * parent zone's selections live on its children, so listing only
+     * direct hits would show an empty list next to a non-zero count.
+     *
+     * Returns rows rather than models — the caller wants one flat line
+     * per subscription (who, which zone, which plan, still live?), and
+     * hydrating Vendor models to read four columns off each would be
+     * more machinery for less.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    public function subscribingVendors(): \Illuminate\Support\Collection
+    {
+        $zoneIds = array_merge([$this->getKey()], $this->descendantIds());
+
+        return DB::table('subscription_items')
+            ->join('subscriptions', 'subscriptions.id', '=', 'subscription_items.subscription_id')
+            ->join('vendors', 'vendors.id', '=', 'subscriptions.vendor_id')
+            ->leftJoin('zones', 'zones.id', '=', 'subscription_items.item_id')
+            ->leftJoin('plans', 'plans.id', '=', 'subscriptions.plan_id')
+            ->where('subscription_items.item_type', 'zone')
+            ->whereIn('subscription_items.item_id', $zoneIds)
+            // Soft-deleted subscriptions and vendors are not "in use" by
+            // anyone, and showing them would overstate the cost of
+            // deactivating this zone.
+            ->whereNull('subscriptions.deleted_at')
+            ->whereNull('vendors.deleted_at')
+            ->select([
+                'vendors.id as vendor_id',
+                // The admin links to the owning user, not the vendor:
+                // vendor management was folded into UserResource, which
+                // is the only one of the two with an edit page.
+                'vendors.user_id',
+                'vendors.business_name',
+                'vendors.status as vendor_status',
+                'zones.name as zone_name',
+                'plans.name as plan_name',
+                'subscriptions.status as subscription_status',
+                'subscriptions.end_date',
+            ])
+            ->orderBy('vendors.business_name')
+            ->get()
+            // plans.name is stored per language; these are raw rows.
+            ->each(fn (object $row) => $row->plan_name = Languages::pick($row->plan_name));
     }
 
     public function scopeActive($query)

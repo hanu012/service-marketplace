@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Vendor;
 
+use App\Services\VendorSearchService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
@@ -30,6 +32,16 @@ class VendorSearchRequest extends FormRequest
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'pincode' => ['nullable', 'string', 'max:10'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:50'],
+            // The three list-screen sort chips (task 5.3's redesign).
+            // Defaults to "nearest" in the service itself, not here, so
+            // every other caller of VendorSearchService::search() keeps
+            // its own default rather than silently depending on this
+            // request class's.
+            'sort' => ['sometimes', Rule::in([
+                VendorSearchService::SORT_NEAREST,
+                VendorSearchService::SORT_RATING,
+                VendorSearchService::SORT_NEW,
+            ])],
         ];
     }
 

@@ -55,8 +55,8 @@ class CmsPageResourceTest extends TestCase
         Livewire::test(CreateCmsPage::class)
             ->fillForm([
                 'slug' => 'faq',
-                'title' => 'FAQ',
-                'body' => '# FAQ',
+                'title' => ['en' => 'FAQ'],
+                'body' => ['en' => '# FAQ'],
                 'is_published' => false,
             ])
             ->call('create')
@@ -73,8 +73,8 @@ class CmsPageResourceTest extends TestCase
         Livewire::test(CreateCmsPage::class)
             ->fillForm([
                 'slug' => 'privacy-policy',
-                'title' => 'Privacy',
-                'body' => '# Privacy',
+                'title' => ['en' => 'Privacy'],
+                'body' => ['en' => '# Privacy'],
             ])
             ->call('create')
             ->assertHasFormErrors(['slug']);
@@ -99,7 +99,7 @@ class CmsPageResourceTest extends TestCase
         $originalPublishedAt = $page->published_at;
 
         Livewire::test(EditCmsPage::class, ['record' => $page->getKey()])
-            ->fillForm(['title' => 'Terms of Service (Updated)'])
+            ->fillForm(['title' => ['en' => 'Terms of Service (Updated)']])
             ->call('save')
             ->assertHasNoFormErrors();
 

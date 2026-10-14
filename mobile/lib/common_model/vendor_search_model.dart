@@ -13,6 +13,14 @@ class VendorSearchModel {
   double? ratingAvg;
   int? ratingCount;
 
+  /// Only present when the search was given a point, not a pincode-only
+  /// lookup — null either way is a valid state, not missing data.
+  double? distanceKm;
+
+  /// Every subcategory this vendor's active subscription covers, not
+  /// just the one searched for — the "+N" chips on the search card.
+  List<VendorSearchServiceModel> services;
+
   /// Task: favorites/share/report/account deletion. Not nullable —
   /// the backend always includes it, defaulting `false` for a guest.
   bool isFavorite;
@@ -26,8 +34,10 @@ class VendorSearchModel {
     this.shopPhotoUrl,
     this.ratingAvg,
     this.ratingCount,
+    this.distanceKm,
+    List<VendorSearchServiceModel>? services,
     this.isFavorite = false,
-  });
+  }) : services = services ?? [];
 
   VendorSearchModel.fromJson(Map<String, dynamic> json)
       : id = json['id'] as int?,
@@ -38,7 +48,22 @@ class VendorSearchModel {
         shopPhotoUrl = json['shop_photo_url'] as String?,
         ratingAvg = (json['rating_avg'] as num?)?.toDouble(),
         ratingCount = json['rating_count'] as int?,
+        distanceKm = (json['distance_km'] as num?)?.toDouble(),
+        services = ((json['services'] as List<dynamic>?) ?? [])
+            .map((e) => VendorSearchServiceModel.fromJson(e as Map<String, dynamic>))
+            .toList(),
         isFavorite = json['is_favorite'] as bool? ?? false;
+}
+
+class VendorSearchServiceModel {
+  int? id;
+  String? name;
+
+  VendorSearchServiceModel({this.id, this.name});
+
+  VendorSearchServiceModel.fromJson(Map<String, dynamic> json)
+      : id = json['id'] as int?,
+        name = json['name'] as String?;
 }
 
 /// `GET /api/vendors/search`'s `data` envelope — the zone the search

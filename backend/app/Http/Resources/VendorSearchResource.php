@@ -28,6 +28,14 @@ class VendorSearchResource extends JsonResource
             'rating_avg' => $this->rating_avg,
             'rating_count' => $this->rating_count,
             'is_favorite' => $this->isFavorite($request),
+            // Only present when the query selected it (a lat/lng search),
+            // same as VendorDetailResource's own distance_km.
+            'distance_km' => $this->distance_km !== null ? (float) $this->distance_km : null,
+            // Attached by the controller as a plain array, not a
+            // relation — see VendorSearchController::attachServices().
+            // Round-trips through JsonResource untouched since it is
+            // already the shape the app wants.
+            'services' => $this->services ?? [],
         ];
     }
 

@@ -59,11 +59,14 @@ class BaseTextField extends TextFormField {
           keyboardType: textInputType,
           maxLines: isSecure ? 1 : (maxLines ?? 1),
           cursorColor: cursorColor ?? ColorRes.primaryColor,
+          // Sizes, padding and radius match the provider app's
+          // BaseTextField; colours stay this app's own.
           style: TextStyle(
             color: textColor ?? ColorRes.secondaryColor,
-            fontSize: (14 + 4).getFontSize,
-            fontWeight: fontWeight ?? FontWeight.w400,
-            fontFamily: fontFamily ?? FontFamily.dmSans,
+            fontSize: 16.getFontSize,
+            fontWeight: fontWeight ?? FontWeight.w500,
+            letterSpacing: 0.5.getSize,
+            fontFamily: fontFamily ?? FontFamily.poppins,
           ),
           decoration: InputDecoration(
             hintText: hintText,
@@ -77,23 +80,27 @@ class BaseTextField extends TextFormField {
             counterText: '',
             contentPadding: contentPadding ??
                 EdgeInsets.symmetric(
-                  horizontal: 16.getSize,
+                  horizontal: 12.getSize,
                   vertical: 14.getSize,
                 ),
             hintStyle: TextStyle(
               color: hintTextColor ?? ColorRes.grayColor,
-              fontSize: (14 + 4).getFontSize,
+              fontSize: 14.getFontSize,
               fontWeight: FontWeight.w400,
-              fontFamily: fontFamily ?? FontFamily.dmSans,
+              letterSpacing: 0.5.getSize,
+              fontFamily: fontFamily ?? FontFamily.poppins,
             ),
             labelStyle: TextStyle(
               color: hintTextColor ?? ColorRes.grayColor,
-              fontFamily: fontFamily ?? FontFamily.dmSans,
+              fontSize: 14.getFontSize,
+              letterSpacing: 0.5.getSize,
+              fontFamily: fontFamily ?? FontFamily.poppins,
             ),
             errorStyle: TextStyle(
               color: ColorRes.errorColor,
-              fontSize: (12 + 4).getFontSize,
-              fontFamily: fontFamily ?? FontFamily.dmSans,
+              fontSize: 12.getFontSize,
+              fontWeight: FontWeight.w400,
+              fontFamily: fontFamily ?? FontFamily.poppins,
             ),
             enabledBorder: _border(
               isShowBorder ? (borderColor ?? ColorRes.borderColor) : Colors.transparent,
@@ -125,7 +132,7 @@ class BaseTextField extends TextFormField {
 
   static OutlineInputBorder _border(Color color, double? radius, double? width) {
     return OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radius ?? 10.getSize),
+      borderRadius: BorderRadius.circular(radius ?? 12.getSize),
       borderSide: BorderSide(color: color, width: width ?? 1.getSize),
     );
   }

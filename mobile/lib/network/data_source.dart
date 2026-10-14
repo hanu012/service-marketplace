@@ -28,23 +28,25 @@ class DataSource {
   static const String register = 'auth/register';
   static const String login = 'auth/login';
   static const String logout = 'auth/logout';
-  static const String forgotPassword = 'auth/forgot-password';
-  static const String resetPassword = 'auth/reset-password';
-  static const String resendVerification = 'auth/resend-verification';
   static const String changePassword = 'auth/change-password';
+  static const String passwordResetRequests = 'auth/password-reset-requests';
   static const String user = 'user';
   static const String vendors = 'vendors';
   static const String vendorDraft = 'vendors/draft';
   static const String categories = 'categories';
+  static const String serviceSearch = 'services/search';
   static const String plans = 'plans';
   static const String zones = 'zones';
   static const String subscriptions = 'subscriptions';
   static const String settings = 'settings';
+  static const String salesmanMe = 'salesmen/me';
+  static const String userPreferences = 'user/preferences';
   static const String salesmanVendors = 'salesmen/me/vendors';
   static const String salesmanCommissions = 'salesmen/me/commissions';
   static const String vendorMe = 'vendors/me';
   static const String vendorMeServices = 'vendors/me/services';
   static const String vendorMePortfolio = 'vendors/me/portfolio';
+  static const String customerMe = 'customers/me';
   static const String customerMeLocation = 'customers/me/location';
   static const String vendorSearch = 'vendors/search';
   static const String leads = 'leads';
@@ -52,6 +54,7 @@ class DataSource {
   static const String vendorMeLeads = 'vendors/me/leads';
   static const String vendorMeReviews = 'vendors/me/reviews';
   static const String customerMeFavorites = 'customers/me/favorites';
+  static const String customerMeAddresses = 'customers/me/addresses';
 
   late final Dio _dio = Dio(
     BaseOptions(
@@ -66,9 +69,13 @@ class DataSource {
       // parsed rather than thrown.
       validateStatus: (status) => status != null && status < 500,
     ),
-  )..interceptors.add(
+  )..interceptors.addAll([
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // The server returns category, plan and banner names in this
+          // language, falling back to English where none is entered.
+          options.headers[HttpHeaders.acceptLanguageHeader] = Injector.language;
+
           if (Injector.accessToken.isNotEmpty) {
             options.headers[HttpHeaders.authorizationHeader] =
                 'Bearer ${Injector.accessToken}';
@@ -76,7 +83,52 @@ class DataSource {
           return handler.next(options);
         },
       ),
-    );
+      // Same one-line-per-part format as the ehhs provider app, so logs read
+      // the same across both projects. Added after the auth interceptor so
+      // the headers printed are the ones actually sent.
+      if (kDebugMode)
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            _log('⏳ REQUEST → ${options.method} ${options.uri}');
+            _log('📌 HEADERS → ${_redacted(options.headers)}');
+            _log('📌 BODY → ${options.data is FormData ? _formDataSummary(options.data as FormData) : options.data} : ${options.queryParameters}');
+            return handler.next(options);
+          },
+          onResponse: (response, handler) {
+            // 4xx arrive here too (see validateStatus), not in onError.
+            _log('✅ RESPONSE → ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.uri}');
+            _log('📦 DATA → ${response.data}');
+            return handler.next(response);
+          },
+          onError: (e, handler) {
+            _log('❌ ERROR → ${e.requestOptions.method} ${e.requestOptions.uri} '
+                '${e.response?.statusCode ?? ''} ${e.message}');
+            if (e.response?.data != null) _log('📦 DATA → ${e.response?.data}');
+            return handler.next(e);
+          },
+        ),
+    ]);
+
+  /// debugPrint with a wrap width: logcat silently cuts a single line off
+  /// at ~1 KB, which would truncate most JSON responses.
+  static void _log(String message) => debugPrint(message, wrapWidth: 1024);
+
+  /// Bearer token shortened to its tail — enough to tell sessions apart in a
+  /// log without leaving a usable credential in it.
+  static Map<String, dynamic> _redacted(Map<String, dynamic> headers) {
+    final auth = headers[HttpHeaders.authorizationHeader];
+    if (auth is! String || auth.length <= 12) return headers;
+    return {
+      ...headers,
+      HttpHeaders.authorizationHeader: 'Bearer …${auth.substring(auth.length - 6)}',
+    };
+  }
+
+  /// FormData's own toString is just "Instance of 'FormData'".
+  static String _formDataSummary(FormData form) => {
+        for (final field in form.fields) field.key: field.value,
+        for (final file in form.files) file.key: '<file ${file.value.filename ?? ''} ${file.value.length}B>',
+      }.toString();
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -88,21 +140,22 @@ class DataSource {
 
   Future<CommonResponse?> logoutAPI() => _post(logout, {});
 
-  /// Changing your own password while signed in. Distinct from the emailed
-  /// reset flow: a salesman on first login has the temporary password an
-  /// admin gave them, not a reset token.
+  /// Changing your own password while signed in — the only password route
+  /// there is. There is no emailed reset: the platform sends no mail, and a
+  /// forgotten password is replaced by an admin issuing a new temporary one
+  /// from the panel, which lands the user here on next sign-in.
   Future<CommonResponse?> changePasswordAPI({required Map<String, dynamic> body}) =>
       _post(changePassword, body);
 
-  Future<CommonResponse?> forgotPasswordAPI({required Map<String, dynamic> body}) =>
-      _post(forgotPassword, body);
+  /// "Forgot password?" — asks an admin to issue a temporary password. No
+  /// token: the caller cannot sign in. The server answers the same whether
+  /// or not the email has an account, so the app always shows one message.
+  Future<CommonResponse?> passwordResetRequestAPI({required Map<String, dynamic> body}) =>
+      _post(passwordResetRequests, body);
 
-  Future<CommonResponse?> resetPasswordAPI({required Map<String, dynamic> body}) =>
-      _post(resetPassword, body);
-
-  Future<CommonResponse?> resendVerificationAPI({required Map<String, dynamic> body}) =>
-      _post(resendVerification, body);
-
+  /// The signed-in user's own profile. Also how the account-verification
+  /// screen finds out an admin has made a decision — it is one of the few
+  /// routes an unapproved account may still call.
   Future<CommonResponse?> userAPI() => _get(user);
 
   // ── Vendors (salesman add-vendor flow, SPEC 2.2) ─────────────────────────
@@ -119,6 +172,11 @@ class DataSource {
   /// The vendor's own record (SPEC section 3.2) — checked on login to
   /// decide dashboard vs plan-selection, per has_active_subscription.
   Future<CommonResponse?> vendorMeAPI() => _get(vendorMe);
+
+  /// The vendor editing their own business profile (SPEC section 3.2).
+  /// No id in the body — the server resolves the vendor from the token.
+  Future<CommonResponse?> updateVendorMeAPI({required Map<String, dynamic> body}) =>
+      _patch(vendorMe, body);
 
   /// Adding categories/subcategories/zones to the caller's own active
   /// subscription, within whatever quota is still unused (SPEC section
@@ -140,6 +198,7 @@ class DataSource {
     required String type,
     required int subcategoryId,
     required String filePath,
+    ProgressCallback? onSendProgress,
   }) async {
     final form = FormData.fromMap({
       'type': type,
@@ -147,7 +206,7 @@ class DataSource {
       'file': await MultipartFile.fromFile(filePath),
     });
 
-    return _multipart(vendorMePortfolio, form);
+    return _multipart(vendorMePortfolio, form, onSendProgress: onSendProgress);
   }
 
   /// The vendor Leads tab (SPEC section 3 item 7, task 4.8) — every
@@ -177,6 +236,34 @@ class DataSource {
   /// Resolves and persists the customer's location in one call — a GPS
   /// point, a pincode, or both (the point wins server-side when both are
   /// present). Not required together: pass whichever the caller has.
+  // ── Saved addresses (customer address book) ──────────────────────────────
+
+  /// The whole address book, default first. Unpaginated — capped at 20
+  /// server-side, and the picker needs every entry at once.
+  Future<CommonResponse?> customerAddressesAPI() => _get(customerMeAddresses);
+
+  /// Body: label (home|office|other), other_label, apartment_number,
+  /// building_name, street_address, area, city, state, pincode, latitude,
+  /// longitude, is_default. The first address saved is always the default.
+  Future<CommonResponse?> addCustomerAddressAPI({required Map<String, dynamic> body}) =>
+      _post(customerMeAddresses, body);
+
+  /// Same body as add — the edit form sends every field again.
+  Future<CommonResponse?> updateCustomerAddressAPI({
+    required int addressId,
+    required Map<String, dynamic> body,
+  }) =>
+      _patch('$customerMeAddresses/$addressId', body);
+
+  Future<CommonResponse?> deleteCustomerAddressAPI({required int addressId}) =>
+      _delete('$customerMeAddresses/$addressId');
+
+  /// Marks the address the customer just chose as their default. The
+  /// caller still sends its point to updateCustomerLocationAPI — that is
+  /// what vendor matching reads.
+  Future<CommonResponse?> setDefaultCustomerAddressAPI({required int addressId}) =>
+      _post('$customerMeAddresses/$addressId/default', {});
+
   Future<CommonResponse?> updateCustomerLocationAPI({
     double? latitude,
     double? longitude,
@@ -200,6 +287,12 @@ class DataSource {
     String? pincode,
     int page = 1,
     int perPage = 15,
+    /// 'nearest' | 'rating' | 'new' — the list screen's sort chips.
+    /// Omitted (null) keeps the server's own default (plan priority,
+    /// then rating, then recency), same behaviour as before these chips
+    /// existed — callers that do not care about sort (the home screen's
+    /// "Vendors near you" rail) are unaffected.
+    String? sort,
   }) =>
       _get(vendorSearch, queryParameters: {
         'subcategory_id': subcategoryId,
@@ -208,6 +301,7 @@ class DataSource {
         'pincode': ?pincode,
         'page': page,
         'per_page': perPage,
+        'sort': ?sort,
       });
 
   /// `latitude`/`longitude` are optional — the response simply omits
@@ -225,6 +319,19 @@ class DataSource {
   /// SPEC section 4 item 7: written BEFORE the dialer/WhatsApp intent
   /// opens, never fire-and-forget. Callers must await this and check
   /// `isSuccess` before launching anything.
+  /// The approximate call length for a Call lead, reported when the
+  /// customer comes back from the dialer. Best-effort: a failure loses only
+  /// the duration, never the lead.
+  Future<CommonResponse?> recordLeadDurationAPI({required int leadId, required int durationSeconds}) =>
+      _post('$leads/$leadId/duration', {'duration_seconds': durationSeconds});
+
+  /// Profile → My calls.
+  Future<CommonResponse?> customerCallsAPI({int page = 1, int perPage = 20}) =>
+      _get('customers/me/calls', queryParameters: {'page': page, 'per_page': perPage});
+
+  /// Counts for the vendor home "Recent calls" card.
+  Future<CommonResponse?> vendorLeadsSummaryAPI() => _get('$vendorMeLeads/summary');
+
   Future<CommonResponse?> createLeadAPI({
     required int vendorId,
     required int subcategoryId,
@@ -281,6 +388,28 @@ class DataSource {
   /// request to render selection with a live "X of Y selected" counter.
   Future<CommonResponse?> categoriesAPI() => _get(categories);
 
+  /// "X vendors" per subcategory on the subcategories screen. Location is
+  /// optional here, unlike vendorSearchAPI — the screen opens before the
+  /// customer's location has necessarily resolved (SPEC section 4.2's own
+  /// fallback states), and the server just returns every count as zero
+  /// rather than rejecting the request.
+  Future<CommonResponse?> categoryVendorCountsAPI({
+    required int categoryId,
+    double? latitude,
+    double? longitude,
+    String? pincode,
+  }) =>
+      _get('$categories/$categoryId/vendor-counts', queryParameters: {
+        'latitude': ?latitude,
+        'longitude': ?longitude,
+        'pincode': ?pincode,
+      });
+
+  /// Free-text service lookup for the customer search bar. A short
+  /// ranked slice, unlike categoriesAPI's whole-tree master data.
+  Future<CommonResponse?> searchServicesAPI({required String query}) =>
+      _get(serviceSearch, queryParameters: {'q': query});
+
   Future<CommonResponse?> plansAPI() => _get(plans);
 
   Future<CommonResponse?> zonesAPI() => _get(zones);
@@ -292,6 +421,28 @@ class DataSource {
 
   // ── Salesman (My Vendors / Earnings, SPEC 2.3, 2.4) ──────────────────────
 
+  /// The salesman's own profile plus headline stats (SPEC section 2.5).
+  Future<CommonResponse?> salesmanMeAPI() => _get(salesmanMe);
+
+  /// Name and phone only — everything else on the salesman record is
+  /// admin-owned, and the server rejects the rest regardless.
+  Future<CommonResponse?> updateSalesmanProfileAPI({required Map<String, dynamic> body}) =>
+      _patch(salesmanMe, body);
+
+  // ── Customer personal details ───────────────────────────────────────────
+
+  /// Name, email and phone for the customer's Personal Details screen.
+  Future<CommonResponse?> customerMeAPI() => _get(customerMe);
+
+  /// Name and phone only — email is the login identity and stays
+  /// admin-owned.
+  Future<CommonResponse?> updateCustomerProfileAPI({required Map<String, dynamic> body}) =>
+      _patch(customerMe, body);
+
+  /// Language and the notification mute, shared by all three apps.
+  Future<CommonResponse?> updatePreferencesAPI({required Map<String, dynamic> body}) =>
+      _patch(userPreferences, body);
+
   Future<CommonResponse?> salesmanVendorsAPI() => _get(salesmanVendors);
 
   Future<CommonResponse?> salesmanCommissionsAPI() => _get(salesmanCommissions);
@@ -300,6 +451,15 @@ class DataSource {
   /// server-side and enforced via a unique column there — a dropped
   /// response and a retry with the same key returns the original
   /// subscription rather than creating a second one.
+  /// Renewal for a vendor who already had a plan — active (early), grace
+  /// or expired. Same body as subscribeAPI minus free_trial_days, and the
+  /// same Idempotency-Key handling. No temporary password comes back.
+  Future<CommonResponse?> renewSubscriptionAPI({
+    required Map<String, dynamic> body,
+    required String idempotencyKey,
+  }) =>
+      _post('$subscriptions/renew', body, headers: {'Idempotency-Key': idempotencyKey});
+
   Future<CommonResponse?> subscribeAPI({
     required Map<String, dynamic> body,
     required String idempotencyKey,
@@ -351,12 +511,21 @@ class DataSource {
   /// Multipart variant of _post. Dio sets the boundary and content-type
   /// itself for FormData, so the JSON content-type header from BaseOptions is
   /// overridden per request rather than globally.
-  Future<CommonResponse?> _multipart(String path, FormData form) async {
+  ///
+  /// [onSendProgress] reports bytes written as they go out, so a caller
+  /// uploading a video — tens of megabytes over a phone connection — can
+  /// show real progress instead of an indeterminate spinner.
+  Future<CommonResponse?> _multipart(
+    String path,
+    FormData form, {
+    ProgressCallback? onSendProgress,
+  }) async {
     try {
       final response = await _dio.post(
         path,
         data: form,
         options: Options(contentType: 'multipart/form-data'),
+        onSendProgress: onSendProgress,
       );
       return _parse(response);
     } catch (e) {
@@ -374,6 +543,18 @@ class DataSource {
     } catch (e) {
       if (kDebugMode) {
         print('DELETE $path failed: $e');
+      }
+      return null;
+    }
+  }
+
+  Future<CommonResponse?> _patch(String path, Map<String, dynamic> body) async {
+    try {
+      final response = await _dio.patch(path, data: body);
+      return _parse(response);
+    } catch (e) {
+      if (kDebugMode) {
+        print('PATCH $path failed: $e');
       }
       return null;
     }

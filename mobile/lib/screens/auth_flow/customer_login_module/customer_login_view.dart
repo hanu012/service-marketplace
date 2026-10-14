@@ -18,7 +18,17 @@ class CustomerLoginView extends StatelessWidget {
           title: StringRes.customerLoginTitle,
           subtitle: StringRes.customerLoginDesc,
           formKey: controller.formKey,
+          brandIcon: Icons.handyman_outlined,
+          brandTitle: StringRes.customerPortal,
+          brandSubtitle: StringRes.customerPortalDesc,
           showBack: false,
+          extras: AuthExtrasRow(
+            checkboxLabel: StringRes.rememberMe,
+            checked: controller.rememberMe,
+            onCheckedChanged: controller.toggleRememberMe,
+            actionLabel: StringRes.forgotPassword,
+            onAction: controller.openForgotPassword,
+          ),
           fields: [
             AuthTextField(
               label: StringRes.email,

@@ -20,6 +20,7 @@ class _NoNetworkDataSource extends DataSource {
   @override
   Future<CommonResponse?> categoriesAPI() async {
     fail('CustomerSubcategoriesController must not call categoriesAPI()');
+    return null;
   }
 
   @override
@@ -30,8 +31,8 @@ class _NoNetworkDataSource extends DataSource {
     String? pincode,
     int page = 1,
     int perPage = 15,
-  }) async =>
-      null;
+    String? sort,
+  }) async => null;
 }
 
 CategoryModel _categoryWithSubcategories() {
@@ -67,66 +68,79 @@ void main() {
     DataSource.instance = _NoNetworkDataSource();
   });
 
-  testWidgets('subcategories come from the constructor-supplied category with no network call', (
-    tester,
-  ) async {
-    final category = _categoryWithSubcategories();
-    final controller = CustomerSubcategoriesController(
-      category: category,
-      zoneId: 7,
-      latitude: 23.02,
-      longitude: 72.52,
-      pincode: null,
-    );
+  testWidgets(
+    'subcategories come from the constructor-supplied category with no network call',
+    (tester) async {
+      final category = _categoryWithSubcategories();
+      final controller = CustomerSubcategoriesController(
+        category: category,
+        zoneId: 7,
+        latitude: 23.02,
+        longitude: 72.52,
+        pincode: null,
+      );
 
-    expect(controller.subcategories, hasLength(2));
-    expect(controller.subcategories.first.name, 'Gas Filling');
-    expect(controller.subcategories.last.name, 'Compressor Repair');
-  });
+      expect(controller.visibleSubcategories, hasLength(2));
+      expect(controller.visibleSubcategories.first.name, 'Gas Filling');
+      expect(controller.visibleSubcategories.last.name, 'Compressor Repair');
+    },
+  );
 
-  testWidgets('selectSubcategory navigates to vendor search with the threaded location', (
-    tester,
-  ) async {
-    final category = _categoryWithSubcategories();
-    final controller = CustomerSubcategoriesController(
-      category: category,
-      zoneId: 7,
-      latitude: 23.02,
-      longitude: 72.52,
-      pincode: null,
-    );
+  testWidgets(
+    'selectSubcategory navigates to vendor search with the threaded location',
+    (tester) async {
+      final category = _categoryWithSubcategories();
+      final controller = CustomerSubcategoriesController(
+        category: category,
+        zoneId: 7,
+        latitude: 23.02,
+        longitude: 72.52,
+        pincode: null,
+      );
 
-    await tester.pumpWidget(GetMaterialApp(home: const Scaffold(body: SizedBox())));
+      await tester.pumpWidget(
+        GetMaterialApp(home: const Scaffold(body: SizedBox())),
+      );
 
-    controller.selectSubcategory(controller.subcategories.first);
-    await tester.pumpAndSettle();
+      controller.selectSubcategory(controller.visibleSubcategories.first);
+      await tester.pumpAndSettle();
 
-    final view = tester.widget<VendorSearchView>(find.byType(VendorSearchView));
-    expect(view.subcategoryId, 10);
-    expect(view.subcategoryName, 'Gas Filling');
-    expect(view.latitude, 23.02);
-    expect(view.longitude, 72.52);
-    expect(view.pincode, null);
-  });
+      final view = tester.widget<VendorSearchView>(
+        find.byType(VendorSearchView),
+      );
+      expect(view.subcategoryId, 10);
+      expect(view.subcategoryName, 'Gas Filling');
+      expect(view.latitude, 23.02);
+      expect(view.longitude, 72.52);
+      expect(view.pincode, null);
+    },
+  );
 
-  testWidgets('selectSubcategory threads a pincode-only location just as well', (tester) async {
-    final category = _categoryWithSubcategories();
-    final controller = CustomerSubcategoriesController(
-      category: category,
-      zoneId: null,
-      latitude: null,
-      longitude: null,
-      pincode: '380001',
-    );
+  testWidgets(
+    'selectSubcategory threads a pincode-only location just as well',
+    (tester) async {
+      final category = _categoryWithSubcategories();
+      final controller = CustomerSubcategoriesController(
+        category: category,
+        zoneId: null,
+        latitude: null,
+        longitude: null,
+        pincode: '380001',
+      );
 
-    await tester.pumpWidget(GetMaterialApp(home: const Scaffold(body: SizedBox())));
+      await tester.pumpWidget(
+        GetMaterialApp(home: const Scaffold(body: SizedBox())),
+      );
 
-    controller.selectSubcategory(controller.subcategories.first);
-    await tester.pumpAndSettle();
+      controller.selectSubcategory(controller.visibleSubcategories.first);
+      await tester.pumpAndSettle();
 
-    final view = tester.widget<VendorSearchView>(find.byType(VendorSearchView));
-    expect(view.latitude, null);
-    expect(view.longitude, null);
-    expect(view.pincode, '380001');
-  });
+      final view = tester.widget<VendorSearchView>(
+        find.byType(VendorSearchView),
+      );
+      expect(view.latitude, null);
+      expect(view.longitude, null);
+      expect(view.pincode, '380001');
+    },
+  );
 }

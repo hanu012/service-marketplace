@@ -13,6 +13,7 @@ use App\Models\Review;
 use App\Models\Subcategory;
 use App\Models\SubscriptionItem;
 use App\Models\Vendor;
+use App\Support\GeoDistance;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -52,8 +53,14 @@ class VendorDetailController extends Controller
             ->where('item_type', 'subcategory')
             ->pluck('item_id');
 
+        // Customer-facing, so a deactivated subcategory (or one under a
+        // deactivated category) is hidden here like everywhere else in the
+        // apps. Unlike ActiveSubscriptionSummary, which deliberately keeps
+        // them for the vendor's own view of what they paid for.
         $services = Subcategory::with('category')
             ->whereIn('id', $subcategoryIds)
+            ->active()
+            ->whereHas('category', fn ($category) => $category->active())
             ->get()
             ->map(fn (Subcategory $subcategory) => [
                 'subcategory_id' => $subcategory->id,
@@ -85,8 +92,11 @@ class VendorDetailController extends Controller
 
         $distanceKm = null;
 
-        if ($request->hasPoint()) {
-            $distanceKm = $this->distanceKm(
+        // A vendor with no saved location has no distance — casting the
+        // missing coordinates to 0 measured from the Gulf of Guinea
+        // ("8237 km away").
+        if ($request->hasPoint() && $vendor->latitude !== null && $vendor->longitude !== null) {
+            $distanceKm = GeoDistance::km(
                 (float) $request->input('latitude'),
                 (float) $request->input('longitude'),
                 (float) $vendor->latitude,
@@ -95,25 +105,5 @@ class VendorDetailController extends Controller
         }
 
         return ApiResponse::success(new VendorDetailResource($vendor, $services, $media, $reviews, $distanceKm));
-    }
-
-    /**
-     * Straight-line (Haversine) distance in km. Only one caller today —
-     * not extracted to a shared class per "no premature abstraction";
-     * move it out if a second caller ever needs it.
-     */
-    private function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $earthRadiusKm = 6371.0;
-
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-
-        $a = sin($dLat / 2) ** 2
-            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
-        return round($earthRadiusKm * $c, 1);
     }
 }

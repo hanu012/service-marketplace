@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customer\UpdateCustomerLocationRequest;
+use App\Http\Requests\Customer\UpdateCustomerProfileRequest;
 use App\Http\Responses\ApiResponse;
+use App\Models\Customer;
 use App\Models\Zone;
 use App\Services\ZoneMatcher;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A customer's own record (SPEC section 4.2, task 4.6) — currently just
@@ -65,6 +69,51 @@ class CustomerController extends Controller
             ],
             'zone' => $zone === null ? null : $this->zoneResource($zone),
         ]);
+    }
+
+    /**
+     * Personal details for the profile screen: name and email from the
+     * user, phone from the customer row.
+     */
+    public function me(Request $request): JsonResponse
+    {
+        $customer = $request->user()->customer;
+
+        if ($customer === null) {
+            return ApiResponse::error('NOT_FOUND', 'No customer profile exists for this account.', 404);
+        }
+
+        return ApiResponse::success(['customer' => $this->profileResource($customer)]);
+    }
+
+    public function updateMe(UpdateCustomerProfileRequest $request): JsonResponse
+    {
+        $customer = $request->user()->customer;
+
+        DB::transaction(function () use ($request, $customer) {
+            if ($request->has('name')) {
+                $customer->user->update(['name' => $request->string('name')->trim()->toString()]);
+            }
+
+            if ($request->has('phone')) {
+                $phone = $request->filled('phone') ? $request->string('phone')->trim()->toString() : null;
+                $customer->update(['phone' => $phone]);
+            }
+        });
+
+        return ApiResponse::success(['customer' => $this->profileResource($customer->fresh()->load('user'))]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function profileResource(Customer $customer): array
+    {
+        return [
+            'name' => $customer->user->name,
+            'email' => $customer->user->email,
+            'phone' => $customer->phone,
+        ];
     }
 
     /**

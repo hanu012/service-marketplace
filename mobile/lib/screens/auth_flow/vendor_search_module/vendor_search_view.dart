@@ -64,7 +64,7 @@ class VendorSearchView extends StatelessWidget {
       return Center(
         child: BaseTextDMSans(
           text: StringRes.noVendorsFoundYet,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -92,7 +92,7 @@ class VendorSearchView extends StatelessWidget {
               onPressed: () => controller.fetchAPI(loadMore: true),
               child: BaseTextDMSans(
                 text: StringRes.loadMore,
-                fontSize: 13,
+                fontSize: 12,
                 color: ColorRes.primaryColor,
               ).tr(),
             ),

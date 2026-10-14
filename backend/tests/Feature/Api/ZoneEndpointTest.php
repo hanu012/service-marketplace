@@ -74,6 +74,21 @@ class ZoneEndpointTest extends TestCase
         $this->assertSame(['Live'], $names);
     }
 
+    public function test_a_city_whose_sub_zones_are_all_drafts_is_not_offered_as_a_leaf(): void
+    {
+        // Showing it with is_leaf: true and no children made the apps offer
+        // it, and the subscribe validator then refused it as not a leaf.
+        $surat = Zone::factory()->active()->create(['name' => 'Surat']);
+        Zone::factory()->create(['parent_id' => $surat->id, 'name' => 'Adajan']); // defaults inactive
+        Zone::factory()->active()->create(['name' => 'Standalone']);
+
+        $response = $this->getJson('/api/zones')->assertOk();
+
+        $names = array_column($response->json('data'), 'name');
+        $this->assertNotContains('Surat', $names);
+        $this->assertContains('Standalone', $names);
+    }
+
     public function test_an_active_child_of_an_inactive_parent_is_excluded_entirely(): void
     {
         // SPEC section 8's "effective active status": a child needs its own

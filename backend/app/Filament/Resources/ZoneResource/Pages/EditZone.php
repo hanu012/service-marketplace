@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\ZoneResource\Pages;
 
 use App\Filament\Resources\ZoneResource;
+use App\Filament\Support\RecordStatus;
 use App\Models\Zone;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
 
@@ -14,7 +16,23 @@ class EditZone extends EditRecord
     protected function getHeaderActions(): array
     {
         // No DeleteAction — SPEC section 10.
-        return [];
+        return [
+            RecordStatus::configure(
+                Action::make('changeStatus'),
+                fn (Zone $record): string => ZoneResource::statusEffects($record),
+                'Draft',
+            ),
+        ];
+    }
+
+    public function getSubheading(): ?string
+    {
+        return RecordStatus::summary(
+            $this->getRecord(),
+            'customer locations inside this boundary are matched to vendors.',
+            'not matched to customers and not offered for selection.',
+            'Draft',
+        );
     }
 
     /**

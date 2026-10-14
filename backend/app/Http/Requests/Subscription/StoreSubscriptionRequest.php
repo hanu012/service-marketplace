@@ -84,12 +84,7 @@ class StoreSubscriptionRequest extends FormRequest
             return;
         }
 
-        if ($vendor->status !== 'draft') {
-            $validator->errors()->add(
-                'vendor_id',
-                'This vendor is not awaiting subscription (already subscribed, or not yet drafted).'
-            );
-        }
+        $this->validateVendorStatus($validator, $vendor);
 
         $actor = $this->user();
 
@@ -100,6 +95,21 @@ class StoreSubscriptionRequest extends FormRequest
 
         if ($actor->role === UserRole::Vendor && $vendor->id !== $actor->vendor?->id) {
             $validator->errors()->add('vendor_id', 'You can only subscribe your own account.');
+        }
+    }
+
+    /**
+     * A first subscription is for a draft vendor only. A vendor who already
+     * had a plan (active, grace or expired) renews instead —
+     * RenewSubscriptionRequest overrides this.
+     */
+    protected function validateVendorStatus(Validator $validator, Vendor $vendor): void
+    {
+        if ($vendor->status !== 'draft') {
+            $validator->errors()->add(
+                'vendor_id',
+                'This vendor is not awaiting subscription (already subscribed, or not yet drafted).'
+            );
         }
     }
 

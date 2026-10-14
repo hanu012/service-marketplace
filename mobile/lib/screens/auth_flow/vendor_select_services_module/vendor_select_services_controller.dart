@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../constants/app.export.dart';
 import '../vendor_dashboard_module/vendor_dashboard_view.dart';
+import '../vendor_landing_module/vendor_landing_view.dart';
 
 /// Vendor self-service, step 2 — categories/subcategories then zones,
 /// capped by the plan chosen on the previous screen (SPEC section 3.2).
@@ -26,6 +27,9 @@ class VendorSelectServicesController extends GetxController {
   final int vendorId;
   final PlanModel plan;
   final bool isAddingMore;
+
+  /// A vendor who already had a plan: POST subscriptions/renew.
+  final bool isRenewal;
   final Set<int> existingCategoryIds;
   final Set<int> existingSubcategoryIds;
   final Set<int> existingZoneIds;
@@ -34,6 +38,7 @@ class VendorSelectServicesController extends GetxController {
     required this.vendorId,
     required this.plan,
     this.isAddingMore = false,
+    this.isRenewal = false,
     Set<int>? existingCategoryIds,
     Set<int>? existingSubcategoryIds,
     Set<int>? existingZoneIds,
@@ -48,6 +53,9 @@ class VendorSelectServicesController extends GetxController {
     selectedCategoryIds.addAll(this.existingCategoryIds);
     selectedSubcategoryIds.addAll(this.existingSubcategoryIds);
     selectedZoneIds.addAll(this.existingZoneIds);
+    // So "add more" mode opens showing what's already there, not collapsed
+    // behind a tap.
+    expandedCategoryIds.addAll(this.existingCategoryIds);
   }
 
   List<CategoryModel> categories = [];
@@ -55,9 +63,22 @@ class VendorSelectServicesController extends GetxController {
   bool isLoading = false;
   bool isSubmitting = false;
 
+  /// One key per screen, not per tap. The server stores it only on a
+  /// successful subscribe, so a retry after a timeout (server done, app
+  /// never heard) replays that success instead of failing as a second
+  /// subscribe, while a retry after a real rejection is processed fresh.
+  final String idempotencyKey = const Uuid().v4();
+
   final Set<int> selectedCategoryIds = {};
   final Set<int> selectedSubcategoryIds = {};
   final Set<int> selectedZoneIds = {};
+
+  // Display-only state (search/filter/expand) — none of this affects what
+  // gets selected or submitted, only what's visible while picking.
+  final TextEditingController searchController = TextEditingController();
+  String searchQuery = '';
+  int? activeCategoryFilterId;
+  final Set<int> expandedCategoryIds = {};
 
   int get maxCategories => plan.maxCategories ?? 0;
   int get maxSubcategories => plan.maxSubcategories ?? 0;
@@ -67,6 +88,104 @@ class VendorSelectServicesController extends GetxController {
   void onInit() {
     super.onInit();
     fetchMasterDataAPI();
+  }
+
+  @override
+  void onClose() {
+    searchController.dispose();
+    zoneSearchController.dispose();
+    super.onClose();
+  }
+
+  void onSearchChanged(String value) {
+    searchQuery = value.trim().toLowerCase();
+    update();
+  }
+
+  /// null = "All" chip. Re-tapping the active chip clears the filter.
+  void selectCategoryFilter(int? categoryId) {
+    activeCategoryFilterId = activeCategoryFilterId == categoryId ? null : categoryId;
+    update();
+  }
+
+  void toggleCategoryExpanded(int categoryId) {
+    if (expandedCategoryIds.contains(categoryId)) {
+      expandedCategoryIds.remove(categoryId);
+    } else {
+      expandedCategoryIds.add(categoryId);
+    }
+    update();
+  }
+
+  /// A search in progress force-expands every match — no point hiding a
+  /// result the search itself just surfaced.
+  bool isCategoryExpanded(int categoryId) =>
+      searchQuery.isNotEmpty || expandedCategoryIds.contains(categoryId);
+
+  /// Categories left standing after the chip filter and the search box —
+  /// a category survives the search if its own name matches, or any of its
+  /// subcategories' names do.
+  List<CategoryModel> get filteredCategories {
+    var list = categories;
+
+    if (activeCategoryFilterId != null) {
+      list = list.where((c) => c.id == activeCategoryFilterId).toList();
+    }
+
+    if (searchQuery.isEmpty) {
+      return list;
+    }
+
+    return list.where((c) {
+      final nameMatch = (c.name ?? '').toLowerCase().contains(searchQuery);
+      final subMatch = c.subcategories.any(
+        (s) => (s.name ?? '').toLowerCase().contains(searchQuery),
+      );
+      return nameMatch || subMatch;
+    }).toList();
+  }
+
+  List<SubcategoryModel> visibleSubcategories(CategoryModel category) {
+    if (searchQuery.isEmpty) {
+      return category.subcategories;
+    }
+    return category.subcategories
+        .where((s) => (s.name ?? '').toLowerCase().contains(searchQuery))
+        .toList();
+  }
+
+  /// The zones step runs its own search box, independent of the services one.
+  final TextEditingController zoneSearchController = TextEditingController();
+  String zoneSearchQuery = '';
+
+  void onZoneSearchChanged(String value) {
+    zoneSearchQuery = value.trim().toLowerCase();
+    update();
+  }
+
+  List<ZoneModel> get filteredZoneCities {
+    if (zoneSearchQuery.isEmpty) {
+      return zoneCities;
+    }
+    return zoneCities.where((city) => visibleZonesIn(city).isNotEmpty).toList();
+  }
+
+  List<ZoneModel> visibleZonesIn(ZoneModel city) {
+    if (zoneSearchQuery.isEmpty) {
+      return city.children;
+    }
+    return city.children
+        .where((zone) => (zone.name ?? '').toLowerCase().contains(zoneSearchQuery))
+        .toList();
+  }
+
+  List<ZoneModel> get visibleStandaloneZones {
+    if (zoneSearchQuery.isEmpty) {
+      return standaloneZones;
+    }
+    return standaloneZones
+        .where((zone) => (zone.name ?? '').toLowerCase().contains(zoneSearchQuery))
+        .toList();
   }
 
   bool isCategoryLocked(int categoryId) => existingCategoryIds.contains(categoryId);
@@ -124,6 +243,25 @@ class VendorSelectServicesController extends GetxController {
 
   bool isZoneSelected(int zoneId) => selectedZoneIds.contains(zoneId);
 
+  /// Headroom left under each cap, floored at 0.
+  int get subcategoriesRemaining =>
+      (maxSubcategories - selectedSubcategoryIds.length).clamp(0, maxSubcategories);
+
+  int get zonesRemaining => (maxZones - selectedZoneIds.length).clamp(0, maxZones);
+
+  int selectedCountIn(CategoryModel category) => category.subcategories
+      .where((sub) => selectedSubcategoryIds.contains(sub.id))
+      .length;
+
+  int selectedCountInCity(ZoneModel city) =>
+      city.children.where((zone) => selectedZoneIds.contains(zone.id)).length;
+
+  /// A zone with children is a city grouping; a childless top-level zone is
+  /// itself a leaf and directly selectable.
+  List<ZoneModel> get zoneCities => zones.where((zone) => !zone.isLeaf).toList();
+
+  List<ZoneModel> get standaloneZones => zones.where((zone) => zone.isLeaf).toList();
+
   bool get categoryQuotaReached => selectedCategoryIds.length >= maxCategories;
 
   bool get subcategoryQuotaReached => selectedSubcategoryIds.length >= maxSubcategories;
@@ -159,6 +297,7 @@ class VendorSelectServicesController extends GetxController {
     }
 
     selectedCategoryIds.add(id);
+    expandedCategoryIds.add(id);
 
     for (final sub in category.subcategories) {
       if (subcategoryQuotaReached) {
@@ -200,6 +339,7 @@ class VendorSelectServicesController extends GetxController {
         return;
       }
       selectedCategoryIds.add(parentId);
+      expandedCategoryIds.add(parentId);
     }
 
     selectedSubcategoryIds.add(id);
@@ -231,7 +371,66 @@ class VendorSelectServicesController extends GetxController {
     update();
   }
 
-  bool validateSelections() {
+  /// Selects every subcategory in one category that still fits under the
+  /// plan's cap. Stops at the cap rather than refusing outright.
+  void selectAllIn(CategoryModel category) {
+    final id = category.id;
+    if (id == null) {
+      return;
+    }
+
+    if (!selectedCategoryIds.contains(id)) {
+      if (categoryQuotaReached) {
+        Utils.showToast(tr(StringRes.categoryQuotaReached), isError: true);
+        return;
+      }
+      selectedCategoryIds.add(id);
+    }
+
+    expandedCategoryIds.add(id);
+
+    var hitCap = false;
+    for (final sub in category.subcategories) {
+      if (sub.id == null || selectedSubcategoryIds.contains(sub.id)) {
+        continue;
+      }
+      if (subcategoryQuotaReached) {
+        hitCap = true;
+        break;
+      }
+      selectedSubcategoryIds.add(sub.id!);
+    }
+
+    if (hitCap) {
+      Utils.showToast(tr(StringRes.subcategoryQuotaReached), isError: true);
+    }
+
+    update();
+  }
+
+  void selectAllZonesIn(ZoneModel city) {
+    var hitCap = false;
+    for (final zone in city.children) {
+      if (zone.id == null || selectedZoneIds.contains(zone.id)) {
+        continue;
+      }
+      if (zoneQuotaReached) {
+        hitCap = true;
+        break;
+      }
+      selectedZoneIds.add(zone.id!);
+    }
+
+    if (hitCap) {
+      Utils.showToast(tr(StringRes.zoneQuotaReached), isError: true);
+    }
+
+    update();
+  }
+
+  /// Gate for leaving the services step. Zones are not checked here — they
+  /// are picked on the next screen, so blocking on them would be a dead end.
+  bool validateServices() {
     if (selectedCategoryIds.isEmpty) {
       Utils.showToast(tr(StringRes.selectACategory), isError: true);
       return false;
@@ -239,6 +438,14 @@ class VendorSelectServicesController extends GetxController {
 
     if (selectedSubcategoryIds.isEmpty) {
       Utils.showToast(tr(StringRes.selectASubcategory), isError: true);
+      return false;
+    }
+
+    return true;
+  }
+
+  bool validateSelections() {
+    if (!validateServices()) {
       return false;
     }
 
@@ -273,10 +480,9 @@ class VendorSelectServicesController extends GetxController {
       };
 
       Utils.showCircularProgressLottie(true);
-      final response = await DataSource.instance.subscribeAPI(
-        body: body,
-        idempotencyKey: const Uuid().v4(),
-      );
+      final response = isRenewal
+          ? await DataSource.instance.renewSubscriptionAPI(body: body, idempotencyKey: idempotencyKey)
+          : await DataSource.instance.subscribeAPI(body: body, idempotencyKey: idempotencyKey);
       Utils.showCircularProgressLottie(false);
 
       if (response == null || !response.isSuccess || response.data == null) {
@@ -293,7 +499,20 @@ class VendorSelectServicesController extends GetxController {
         return;
       }
 
-      Utils.transitionWithOffAll(const VendorDashboardView());
+      final subscription = (response.data as Map<String, dynamic>)['subscription'];
+      final awaitingPayment = subscription is Map<String, dynamic> &&
+          SubscriptionModel.fromJson(subscription).isAwaitingPayment;
+
+      // Razorpay on: a payment link went out by SMS and nothing is active
+      // yet. The landing gate routes to "Waiting for payment" from what
+      // GET /vendors/me reports, the same as on any later app start.
+      // A renewal can start from the dashboard (Renew / Upgrade), which is
+      // still mounted underneath — replacing the stack with a second
+      // dashboard is the crash CLAUDE.md warns about, so it goes through
+      // the landing gate, which then opens a fresh dashboard.
+      Utils.transitionWithOffAll(
+        awaitingPayment || isRenewal ? const VendorLandingView() : const VendorDashboardView(),
+      );
     } catch (e) {
       Utils.showCircularProgressLottie(false);
       if (kDebugMode) {

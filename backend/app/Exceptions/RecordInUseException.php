@@ -17,7 +17,7 @@ class RecordInUseException extends RuntimeException
     {
         return new self(
             "{$label} cannot be deleted: it is referenced by {$count} "
-            .'subscription '.($count === 1 ? 'item' : 'items').'. '
+            .($count === 1 ? 'subscription' : 'subscriptions').'. '
             .'Deactivate it instead (is_active = false), which hides it from '
             .'new selections while leaving existing subscriptions intact.'
         );

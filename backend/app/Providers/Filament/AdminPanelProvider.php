@@ -14,8 +14,10 @@ use Filament\PanelProvider;
 use Filament\Support\Assets\Css;
 use Filament\Support\Assets\Js;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Support\Facades\FilamentAsset;
-use Filament\Widgets;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -29,7 +31,7 @@ class AdminPanelProvider extends PanelProvider
      * Leaflet is vendored from node_modules rather than pulled from a CDN, so
      * no third-party script executes inside an authenticated admin session and
      * the panel keeps working without internet access for its own code. Only
-     * the basemap tiles are remote — see config/map.php.
+     * the basemap tiles are remote â€” see config/map.php.
      *
      * Run `php artisan filament:assets` after `npm install` to publish these
      * into public/js/filament and public/css/filament.
@@ -41,6 +43,7 @@ class AdminPanelProvider extends PanelProvider
             Css::make('leaflet-draw', base_path('node_modules/leaflet-draw/dist/leaflet.draw.css')),
             Js::make('leaflet', base_path('node_modules/leaflet/dist/leaflet.js')),
             Js::make('leaflet-draw', base_path('node_modules/leaflet-draw/dist/leaflet.draw.js')),
+            Css::make('admin-overrides', resource_path('css/filament-overrides.css')),
         ]);
     }
 
@@ -52,6 +55,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName('Service Marketplace')
+            ->maxContentWidth(MaxWidth::Full)
 
             // Dark by default, per CLAUDE.md. Left switchable rather than
             // forced so an admin working in daylight is not stuck with it.
@@ -65,6 +69,8 @@ class AdminPanelProvider extends PanelProvider
                 'primary' => Color::Teal,
                 'gray' => Color::Slate,
             ])
+            // Copy/Share handlers for the temporary-password notification.
+            ->renderHook(PanelsRenderHook::BODY_END, fn (): View => view('filament.hooks.credential-share'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
@@ -72,7 +78,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                Widgets\AccountWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

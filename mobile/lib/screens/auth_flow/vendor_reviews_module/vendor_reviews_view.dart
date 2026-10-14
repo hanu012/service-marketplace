@@ -32,7 +32,7 @@ class VendorReviewsView extends StatelessWidget {
       return Center(
         child: BaseTextDMSans(
           text: StringRes.noReviewsYetVendor,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -64,7 +64,7 @@ class VendorReviewsView extends StatelessWidget {
               onPressed: () => controller.fetchAPI(loadMore: true),
               child: BaseTextDMSans(
                 text: StringRes.loadMore,
-                fontSize: 13,
+                fontSize: 12,
                 color: ColorRes.primaryColor,
               ).tr(),
             ),
@@ -88,7 +88,7 @@ class VendorReviewsView extends StatelessWidget {
             children: [
               BaseTextDMSans(
                 text: review.customerName ?? '',
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: ColorRes.secondaryColor,
               ),
@@ -97,7 +97,7 @@ class VendorReviewsView extends StatelessWidget {
           ),
           if (review.comment != null && review.comment!.isNotEmpty) ...[
             6.heightSpacer,
-            BaseTextDMSans(text: review.comment!, fontSize: 13, color: ColorRes.grayColor),
+            BaseTextDMSans(text: review.comment!, fontSize: 12, color: ColorRes.grayColor),
           ],
           if (review.isHidden) ...[
             8.heightSpacer,
@@ -109,7 +109,7 @@ class VendorReviewsView extends StatelessWidget {
               ),
               child: BaseTextDMSans(
                 text: StringRes.hiddenByAdminLabel,
-                fontSize: 11,
+                fontSize: 10,
                 color: ColorRes.errorColor,
               ).tr(),
             ),
@@ -127,7 +127,7 @@ class VendorReviewsView extends StatelessWidget {
                 children: [
                   BaseTextDMSans(
                     text: StringRes.yourReplyLabel,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: ColorRes.primaryColor,
                   ).tr(),

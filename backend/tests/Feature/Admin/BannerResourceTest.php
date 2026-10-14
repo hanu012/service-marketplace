@@ -72,7 +72,7 @@ class BannerResourceTest extends TestCase
         Livewire::test(CreateBanner::class)
             ->fillForm([
                 'target_app' => 'vendor',
-                'title' => 'New Feature',
+                'title' => ['en' => 'New Feature'],
                 'position' => 'home_top',
                 'image_path' => UploadedFile::fake()->image('banner.jpg'),
                 'is_active' => true,
@@ -80,7 +80,8 @@ class BannerResourceTest extends TestCase
             ->call('create')
             ->assertHasNoFormErrors();
 
-        $banner = Banner::where('title', 'New Feature')->sole();
+        // title is stored per language, so match the English value.
+        $banner = Banner::where('title->en', 'New Feature')->sole();
         $this->assertSame('vendor', $banner->target_app);
         $this->assertNotNull($banner->image_path);
         // TracksFileDisk stamps this on create — confirms the trait is
@@ -101,7 +102,7 @@ class BannerResourceTest extends TestCase
         $banner = $this->banner();
 
         Livewire::test(EditBanner::class, ['record' => $banner->getKey()])
-            ->fillForm(['title' => 'Updated Title'])
+            ->fillForm(['title' => ['en' => 'Updated Title']])
             ->call('save')
             ->assertHasNoFormErrors();
 
@@ -119,7 +120,7 @@ class BannerResourceTest extends TestCase
         $banner->increment('click_count', 5);
 
         Livewire::test(EditBanner::class, ['record' => $banner->getKey()])
-            ->fillForm(['title' => 'Still Diwali Sale'])
+            ->fillForm(['title' => ['en' => 'Still Diwali Sale']])
             ->call('save')
             ->assertHasNoFormErrors();
 

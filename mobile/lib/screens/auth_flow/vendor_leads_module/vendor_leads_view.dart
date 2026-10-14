@@ -10,7 +10,11 @@ import 'vendor_leads_controller.dart';
 /// independent data rather than sharing the dashboard's single
 /// GET /vendors/me fetch.
 class VendorLeadsView extends StatelessWidget {
-  const VendorLeadsView({super.key});
+  const VendorLeadsView({super.key, this.standalone = false});
+
+  /// Opened on its own (home → Recent calls → See all) rather than as a
+  /// dashboard tab body, so it brings its own page and back arrow.
+  final bool standalone;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +22,22 @@ class VendorLeadsView extends StatelessWidget {
       init: VendorLeadsController(),
       dispose: (_) => Get.delete<VendorLeadsController>(),
       builder: (controller) {
-        return body(controller);
+        if (!standalone) {
+          return body(controller);
+        }
+
+        return Scaffold(
+          backgroundColor: ColorRes.backgroundColor,
+          appBar: AppBar(
+            title: BaseTextDMSans(
+              text: tr(StringRes.leadsTab),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: ColorRes.secondaryColor,
+            ),
+          ),
+          body: body(controller),
+        );
       },
     );
   }
@@ -32,7 +51,7 @@ class VendorLeadsView extends StatelessWidget {
       return Center(
         child: BaseTextDMSans(
           text: StringRes.noLeadsYet,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -64,7 +83,7 @@ class VendorLeadsView extends StatelessWidget {
               onPressed: () => controller.fetchAPI(loadMore: true),
               child: BaseTextDMSans(
                 text: StringRes.loadMore,
-                fontSize: 13,
+                fontSize: 12,
                 color: ColorRes.primaryColor,
               ).tr(),
             ),
@@ -106,8 +125,11 @@ class VendorLeadsView extends StatelessWidget {
                 if (lead.createdAt != null) ...[
                   2.heightSpacer,
                   BaseTextDMSans(
-                    text: lead.createdAt!.split('T').first,
-                    fontSize: 11,
+                    text: [
+                      lead.createdAt!.split('T').first,
+                      if (lead.callDurationSeconds != null) Utils.approxCallLength(lead.callDurationSeconds),
+                    ].join(' · '),
+                    fontSize: 10,
                     color: ColorRes.grayColor,
                   ),
                 ],
@@ -129,7 +151,7 @@ class VendorLeadsView extends StatelessWidget {
     if (lead.hasReview) {
       return BaseTextDMSans(
         text: StringRes.reviewAlreadyLeft,
-        fontSize: 11,
+        fontSize: 10,
         color: ColorRes.grayColor,
       ).tr();
     }
@@ -137,7 +159,7 @@ class VendorLeadsView extends StatelessWidget {
     if (lead.reviewRequestedAt != null) {
       return BaseTextDMSans(
         text: StringRes.reviewAlreadyRequested,
-        fontSize: 11,
+        fontSize: 10,
         color: ColorRes.grayColor,
       ).tr();
     }

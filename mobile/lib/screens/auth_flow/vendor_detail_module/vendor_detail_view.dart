@@ -81,7 +81,7 @@ class VendorDetailView extends StatelessWidget {
           PopupMenuItem(
             child: BaseTextDMSans(
               text: StringRes.reportVendorMenuItem,
-              fontSize: 13,
+              fontSize: 12,
               color: ColorRes.errorColor,
             ).tr(),
           ),
@@ -113,7 +113,7 @@ class VendorDetailView extends StatelessWidget {
       return Center(
         child: BaseTextDMSans(
           text: StringRes.vendorNotFound,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -128,15 +128,15 @@ class VendorDetailView extends StatelessWidget {
           16.heightSpacer,
           BaseTextDMSans(
             text: vendor.businessName ?? '',
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
             color: ColorRes.secondaryColor,
           ),
           6.heightSpacer,
           ratingAndDistanceRow(vendor),
           if (vendor.address != null) ...[
             8.heightSpacer,
-            BaseTextDMSans(text: vendor.address!, fontSize: 13, color: ColorRes.grayColor),
+            BaseTextDMSans(text: vendor.address!, fontSize: 12, color: ColorRes.grayColor),
           ],
           24.heightSpacer,
           sectionTitle(StringRes.servicesOfferedSection),
@@ -166,7 +166,7 @@ class VendorDetailView extends StatelessWidget {
           onPressed: () => _showWriteReviewSheet(controller),
           child: BaseTextDMSans(
             text: StringRes.writeReviewButton,
-            fontSize: 13,
+            fontSize: 12,
             color: ColorRes.primaryColor,
           ).tr(),
         ),
@@ -180,7 +180,7 @@ class VendorDetailView extends StatelessWidget {
         padding: EdgeInsets.symmetric(vertical: 12.getSize),
         child: BaseTextDMSans(
           text: StringRes.noReviewsYet,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -213,7 +213,7 @@ class VendorDetailView extends StatelessWidget {
             children: [
               BaseTextDMSans(
                 text: review.customerName ?? '',
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: ColorRes.secondaryColor,
               ),
@@ -222,7 +222,7 @@ class VendorDetailView extends StatelessWidget {
           ),
           if (review.comment != null && review.comment!.isNotEmpty) ...[
             6.heightSpacer,
-            BaseTextDMSans(text: review.comment!, fontSize: 13, color: ColorRes.grayColor),
+            BaseTextDMSans(text: review.comment!, fontSize: 12, color: ColorRes.grayColor),
           ],
           if (review.vendorReply != null) ...[
             10.heightSpacer,
@@ -237,7 +237,7 @@ class VendorDetailView extends StatelessWidget {
                 children: [
                   BaseTextDMSans(
                     text: StringRes.vendorReplyLabel,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: ColorRes.primaryColor,
                   ).tr(),
@@ -315,13 +315,13 @@ class VendorDetailView extends StatelessWidget {
           4.widthSpacer,
           BaseTextDMSans(
             text: '${vendor.ratingAvg?.toStringAsFixed(1)} (${vendor.ratingCount})',
-            fontSize: 13,
+            fontSize: 12,
             color: ColorRes.grayColor,
           ),
         ] else
           BaseTextDMSans(
             text: StringRes.newVendorLabel,
-            fontSize: 13,
+            fontSize: 12,
             color: ColorRes.primaryColor,
           ).tr(),
         if (vendor.distanceKm != null) ...[
@@ -330,7 +330,7 @@ class VendorDetailView extends StatelessWidget {
           4.widthSpacer,
           BaseTextDMSans(
             text: '${vendor.distanceKm!.toStringAsFixed(1)} ${tr(StringRes.distanceAwayLabel)}',
-            fontSize: 13,
+            fontSize: 12,
             color: ColorRes.grayColor,
           ),
         ],
@@ -341,7 +341,7 @@ class VendorDetailView extends StatelessWidget {
   Widget sectionTitle(String labelKey) {
     return BaseTextDMSans(
       text: labelKey,
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: FontWeight.w600,
       color: ColorRes.secondaryColor,
     ).tr();
@@ -381,7 +381,7 @@ class VendorDetailView extends StatelessWidget {
         padding: EdgeInsets.symmetric(vertical: 12.getSize),
         child: BaseTextDMSans(
           text: StringRes.noPortfolioYet,
-          fontSize: 13,
+          fontSize: 12,
           color: ColorRes.grayColor,
         ).tr(),
       );
@@ -529,7 +529,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
               16.heightSpacer,
               BaseTextDMSans(
                 text: StringRes.ratingLabel,
-                fontSize: 13,
+                fontSize: 12,
                 color: ColorRes.grayColor,
               ).tr(),
               8.heightSpacer,
@@ -546,10 +546,13 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 maxLines: 3,
               ),
               16.heightSpacer,
-              BaseRaisedButton(
-                onPressed: controller.isSubmittingReview ? null : _submit,
-                buttonText: StringRes.submitReview,
-                buttonColor: ColorRes.primaryColor,
+              SizedBox(
+                width: double.infinity,
+                child: BaseRaisedButton(
+                  onPressed: controller.isSubmittingReview ? null : _submit,
+                  buttonText: StringRes.submitReview,
+                  buttonColor: ColorRes.primaryColor,
+                ),
               ),
             ],
           );
@@ -628,10 +631,13 @@ class _ReportVendorSheetState extends State<_ReportVendorSheet> {
                 maxLines: 3,
               ),
               16.heightSpacer,
-              BaseRaisedButton(
-                onPressed: controller.isSubmittingReport ? null : _submit,
-                buttonText: StringRes.reportVendorSubmitButton,
-                buttonColor: ColorRes.errorColor,
+              SizedBox(
+                width: double.infinity,
+                child: BaseRaisedButton(
+                  onPressed: controller.isSubmittingReport ? null : _submit,
+                  buttonText: StringRes.reportVendorSubmitButton,
+                  buttonColor: ColorRes.errorColor,
+                ),
               ),
             ],
           );

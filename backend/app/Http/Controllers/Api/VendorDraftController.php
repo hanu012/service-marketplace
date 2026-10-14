@@ -9,6 +9,7 @@ use App\Http\Resources\VendorResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Vendor;
 use App\Services\VendorDraftService;
+use App\Support\ActiveSubscriptionSummary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -117,10 +118,18 @@ class VendorDraftController extends Controller
 
     /**
      * Lets the app recover a draft it has the id for after a reinstall or a
-     * cleared cache.
+     * cleared cache, and backs the salesman's vendor detail screen.
+     *
+     * `active_subscription` is the same block `GET /vendors/me` returns, so
+     * both screens read one shape and cannot disagree about a vendor's
+     * quota. It is null for a draft or lapsed vendor — which is exactly the
+     * "Not subscribed" state the salesman's list already shows.
      */
     public function show(Request $request, Vendor $vendor): JsonResponse
     {
-        return ApiResponse::success(['vendor' => new VendorResource($vendor)]);
+        return ApiResponse::success([
+            'vendor' => new VendorResource($vendor->load('user')),
+            'active_subscription' => ActiveSubscriptionSummary::for($vendor),
+        ]);
     }
 }

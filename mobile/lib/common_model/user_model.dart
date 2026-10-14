@@ -16,6 +16,16 @@ class UserModel {
   String? emailVerifiedAt;
   String? createdAt;
   bool mustChangePassword = false;
+
+  /// 'pending' | 'approved' | 'rejected'. Admin approval is the only gate on
+  /// an account, so this decides whether the app opens home or the
+  /// account-verification screen.
+  String? approvalStatus;
+
+  /// The admin's reason, set only on a rejection. Shown to the user so a
+  /// rejection is not a dead end they have to phone up about.
+  String? approvalNote;
+
   Authentication? authentication;
 
   UserModel({
@@ -25,6 +35,8 @@ class UserModel {
     this.role,
     this.emailVerifiedAt,
     this.createdAt,
+    this.approvalStatus,
+    this.approvalNote,
     this.authentication,
   });
 
@@ -42,6 +54,11 @@ class UserModel {
     emailVerifiedAt = user['email_verified_at'] as String?;
     createdAt = user['created_at'] as String?;
     mustChangePassword = (user['must_change_password'] as bool?) ?? false;
+    // Defaults to pending rather than approved when the key is missing: an
+    // unknown state must fail closed, or a malformed response would walk
+    // someone straight into a home screen the API will refuse to serve.
+    approvalStatus = user['approval_status'] as String? ?? 'pending';
+    approvalNote = user['approval_note'] as String?;
 
     final token = json['token'];
     if (token is String && token.isNotEmpty) {
@@ -50,6 +67,13 @@ class UserModel {
   }
 
   bool get isEmailVerified => emailVerifiedAt != null;
+
+  /// The account can actually use the app. Everything else — pending,
+  /// rejected, or an unrecognised value from a newer server — routes to the
+  /// verification screen.
+  bool get isApproved => approvalStatus == 'approved';
+
+  bool get isRejected => approvalStatus == 'rejected';
 
   Map<String, dynamic> toJson() => {
         'user': {
@@ -60,6 +84,8 @@ class UserModel {
           'email_verified_at': emailVerifiedAt,
           'created_at': createdAt,
           'must_change_password': mustChangePassword,
+          'approval_status': approvalStatus,
+          'approval_note': approvalNote,
         },
         'token': authentication?.accessToken,
       };

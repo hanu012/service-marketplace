@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\Setting;
+use App\Support\Languages;
 use Illuminate\Http\JsonResponse;
 
 class SettingController extends Controller
@@ -27,6 +28,11 @@ class SettingController extends Controller
     {
         return ApiResponse::success([
             'free_trial_max_days' => Setting::get('free_trial_max_days', 15),
+            // What Profile → Language offers. Always includes 'en'.
+            'enabled_languages' => Languages::enabled(),
+            // Admin switch: vendor Recent calls, customer My calls, and the
+            // customer app timing each call.
+            'call_tracking_enabled' => (bool) Setting::get('call_tracking_enabled', true),
         ]);
     }
 }

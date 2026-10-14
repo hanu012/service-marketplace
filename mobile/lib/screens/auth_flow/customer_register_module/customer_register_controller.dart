@@ -2,15 +2,18 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../../constants/app.export.dart';
 import '../../../constants/flavor_config.dart';
+import '../account_verification_module/account_verification_view.dart';
 import '../customer_home_module/customer_home_view.dart';
 
 /// Customer self-registration (SPEC section 4.1) — same shape as
 /// VendorRegisterController, trimmed to what RegisterRequest actually
 /// needs for role=customer: name/email/password only, no business_name/
-/// phone (vendor-only requirements). No email-verification-pending
-/// detour either — a customer registration always returns a token
-/// immediately (AuthController::register()), so success lands straight
-/// on the home screen.
+/// phone (vendor-only requirements).
+///
+/// Registration returns a working token but an unapproved account, so
+/// success lands on the account-verification screen rather than home —
+/// admin approval is the single gate and it applies to customers too
+/// (SPEC section 3.1).
 class CustomerRegisterController extends GetxController {
   TextEditingController nameController = TextEditingController();
   TextEditingController emailController = TextEditingController();
@@ -66,6 +69,14 @@ class CustomerRegisterController extends GetxController {
 
       final userModel = UserModel.fromJson(response.data as Map<String, dynamic>);
       await Injector.setUserData(userModel);
+
+      // Every self-registration lands Pending (SPEC section 3.1), customers
+      // included — approval by an admin is the single gate, and it is not
+      // role-specific the way the old email check was.
+      if (!userModel.isApproved) {
+        Utils.transitionWithOffAll(const AccountVerificationView());
+        return;
+      }
 
       Utils.transitionWithOffAll(const CustomerHomeView());
     } catch (e) {

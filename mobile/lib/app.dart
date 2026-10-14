@@ -1,15 +1,12 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 
 import 'constants/app.export.dart';
 import 'constants/constant.dart';
 import 'constants/flavor_config.dart';
-import 'screens/auth_flow/change_password_module/change_password_view.dart';
-import 'screens/auth_flow/customer_home_module/customer_home_view.dart';
-import 'screens/auth_flow/customer_login_module/customer_login_view.dart';
-import 'screens/auth_flow/salesman_home_module/salesman_home_view.dart';
-import 'screens/auth_flow/salesman_login_module/salesman_login_view.dart';
-import 'screens/auth_flow/vendor_landing_module/vendor_landing_view.dart';
-import 'screens/auth_flow/vendor_login_module/vendor_login_view.dart';
+import 'screens/auth_flow/splash_module/splash_view.dart';
+import 'utils/call_tracker.dart';
 
 /// Shared bootstrap for all three flavours.
 ///
@@ -30,12 +27,32 @@ Future<void> bootstrap(FlavorConfig config) async {
 
   runApp(
     EasyLocalization(
-      supportedLocales: const [Locale('en')],
+      supportedLocales: [
+        for (final code in Constants.languages.keys) Locale(code),
+      ],
       path: 'assets/translations',
-      fallbackLocale: const Locale('en'),
+      fallbackLocale: const Locale(Constants.english),
+      // Injector owns the saved choice (PrefKeys.language), so the
+      // package's own copy is turned off rather than kept in sync.
+      saveLocale: false,
+      startLocale: Locale(
+        Constants.languages.containsKey(Injector.language)
+            ? Injector.language
+            : Constants.english,
+      ),
       child: const ServiceMarketplaceApp(),
     ),
   );
+
+  // Not awaited: the app opens in the saved language straight away.
+  unawaited(Utils.enforceEnabledLanguage());
+  // Admin app switches (call tracking) — cached, refreshed in the background.
+  unawaited(Utils.refreshAppSettings());
+  // Android exact call length: sends any call the customer never came
+  // back from, and watches for the next return to the app.
+  if (config.isCustomer) {
+    CallTracker.init();
+  }
 }
 
 class ServiceMarketplaceApp extends StatelessWidget {
@@ -65,10 +82,18 @@ class ServiceMarketplaceApp extends StatelessWidget {
       // A corner ribbon naming the running flavour — the three apps look
       // alike on a dev device otherwise. Debug builds only; never shipped.
       builder: (context, child) {
-        final content = child ?? const SizedBox.shrink();
+        Widget content = child ?? const SizedBox.shrink();
 
         if (!kDebugMode) return content;
 
+        // The phone bezel/notch/frame around this (when running on web)
+        // lives OUTSIDE the app now — a wrapper HTML page embeds the
+        // dev-server build in a real phone-dimensioned iframe. That gives
+        // GetX's Get.width/Get.height (which `.getSize` etc. scale off,
+        // and which read the actual rendering surface, not any in-app
+        // MediaQuery override — see mobile/device_preview/README.md) the
+        // real phone width to scale against, instead of faking a frame
+        // in-app and fighting that scaling. See mobile/device_preview/.
         return Banner(
           message: config.flavor.name.toUpperCase(),
           location: BannerLocation.topStart,
@@ -76,66 +101,30 @@ class ServiceMarketplaceApp extends StatelessWidget {
           textStyle: TextStyle(
             color: ColorRes.backgroundColor,
             fontSize: 10,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0.5,
           ),
           child: content,
         );
       },
 
-      home: _firstScreen(config),
+      // The splash decides the real entry screen (login, home, or one of
+      // the two account gates) — see SplashController.entryScreen().
+      home: const SplashView(),
     );
-  }
-
-  /// Each flavour's entry screen — all three now check login state and
-  /// land on their real screens (task 4.6 replaced customer's ported
-  /// create_account_module placeholder, the last one still stubbed).
-  Widget _firstScreen(FlavorConfig config) {
-    switch (config.flavor) {
-      case Flavor.salesman:
-        // Already signed in: skip login, but honour a pending forced change
-        // (SPEC section 2.1) — the server blocks every other endpoint until
-        // it is done, so landing on the home screen would fail on its first
-        // request.
-        if (Injector.isLoggedIn) {
-          return (Injector.userData?.mustChangePassword ?? false)
-              ? const ChangePasswordView()
-              : const SalesmanHomeView();
-        }
-
-        return const SalesmanLoginView();
-      case Flavor.vendor:
-        // Same forced-change rule — SPEC section 2.1 is platform-wide, not
-        // salesman-specific, so an admin-created vendor account still needs
-        // it. A self-registered vendor never has this set.
-        if (Injector.isLoggedIn) {
-          return (Injector.userData?.mustChangePassword ?? false)
-              ? const ChangePasswordView()
-              : const VendorLandingView();
-        }
-
-        return const VendorLoginView();
-      case Flavor.customer:
-        // No forced-change branch: a customer registration never sets a
-        // temporary password (SPEC section 4.1 is email + password only,
-        // no admin-created customer accounts), so must_change_password
-        // can't be true for this role.
-        if (Injector.isLoggedIn) {
-          return const CustomerHomeView();
-        }
-
-        return const CustomerLoginView();
-    }
   }
 
   ThemeData get _theme => ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: ColorRes.backgroundColor,
-        fontFamily: FontFamily.dmSans,
-        colorScheme: ColorScheme.dark(
+        fontFamily: FontFamily.poppins,
+        colorScheme: ColorScheme.light(
           primary: ColorRes.primaryColor,
-          onPrimary: ColorRes.backgroundColor,
+          // White, not the canvas: the canvas is now near-white itself,
+          // so using it here would put white-on-white inside any widget
+          // that paints onPrimary over the primary fill.
+          onPrimary: ColorRes.whiteColor,
           surface: ColorRes.surfaceColor,
           onSurface: ColorRes.secondaryColor,
           error: ColorRes.errorColor,
@@ -143,6 +132,7 @@ class ServiceMarketplaceApp extends StatelessWidget {
         appBarTheme: AppBarTheme(
           backgroundColor: ColorRes.surfaceColor,
           foregroundColor: ColorRes.secondaryColor,
+          surfaceTintColor: ColorRes.transparent,
           elevation: 0,
         ),
       );

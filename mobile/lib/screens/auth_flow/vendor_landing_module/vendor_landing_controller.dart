@@ -1,5 +1,6 @@
 import '../../../constants/app.export.dart';
 import '../vendor_dashboard_module/vendor_dashboard_view.dart';
+import '../vendor_payment_pending_module/vendor_payment_pending_view.dart';
 import '../vendor_select_plan_module/vendor_select_plan_view.dart';
 
 /// The single "check subscription, then land somewhere" gate every
@@ -31,8 +32,13 @@ class VendorLandingController extends GetxController {
 
       final vendorMe = VendorMeModel.fromJson(response.data as Map<String, dynamic>);
 
+      final pendingPayment = vendorMe.pendingPayment;
+
       if (vendorMe.hasActiveSubscription) {
         Utils.transitionWithOffAll(const VendorDashboardView());
+      } else if (pendingPayment != null) {
+        // Subscribed online, payment link not paid yet (Razorpay on).
+        Utils.transitionWithOffAll(VendorPaymentPendingView(pendingPayment: pendingPayment));
       } else {
         Utils.transitionWithOffAll(const VendorSelectPlanView());
       }

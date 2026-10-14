@@ -36,6 +36,11 @@ class PaymentReconciliationResource extends Resource
 
     protected static ?string $navigationGroup = 'Finance';
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()

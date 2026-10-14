@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../constants/app.export.dart';
+import '../../../utils/call_tracker.dart';
 
 /// Vendor detail page (SPEC section 4 item 6, task 5.4/5.5).
 ///
@@ -20,7 +21,7 @@ import '../../../constants/app.export.dart';
 /// backend capability (PATCH /api/reviews/{review}), but this public,
 /// unauthenticated detail response has no way to say "which of these
 /// reviews is mine" — see PROGRESS.md's task 5.5 entry.
-class VendorDetailController extends GetxController {
+class VendorDetailController extends GetxController with WidgetsBindingObserver {
   final int vendorId;
 
   /// Nullable: the search-results screen always has one (the
@@ -101,6 +102,15 @@ class VendorDetailController extends GetxController {
     }
   }
 
+  // Call timing (admin switch "Call tracking in apps"). On Android with the
+  // phone permission, CallTracker times the call exactly (off-hook to idle,
+  // floating bubble over the dialler). Otherwise — iOS, or permission
+  // refused — the approximate fallback below: from tapping Call until the
+  // customer is back in the app, ringing included.
+  int? _timedLeadId;
+  DateTime? _callStartedAt;
+  bool _leftAppForCall = false;
+
   Future<void> callAPI() async {
     final phone = vendor?.phone;
 
@@ -108,13 +118,78 @@ class VendorDetailController extends GetxController {
       return;
     }
 
-    final leadWritten = await _recordLead('call');
+    // Asked before the lead is written, so a customer who goes to Settings
+    // to allow the bubble doesn't leave a lead for a call never placed.
+    final exactTiming = await CallTracker.prepare();
 
-    if (!leadWritten) {
+    if (exactTiming == null) {
       return;
     }
 
+    final leadId = await _recordLead('call');
+
+    if (leadId == null) {
+      return;
+    }
+
+    if (exactTiming && leadId > 0) {
+      await CallTracker.start(leadId);
+    } else if (Injector.callTrackingEnabled && leadId > 0) {
+      _timedLeadId = leadId;
+      _callStartedAt = DateTime.now();
+      _leftAppForCall = false;
+      WidgetsBinding.instance.removeObserver(this);
+      WidgetsBinding.instance.addObserver(this);
+    }
+
     await launchUrlFn(Uri(scheme: 'tel', path: phone));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _leftAppForCall = true;
+      return;
+    }
+
+    // Back from the dialer. Ignored if the app never actually left (the
+    // dial was cancelled at the system prompt).
+    if (state == AppLifecycleState.resumed && _leftAppForCall) {
+      finishCallTiming();
+    }
+  }
+
+  /// Sends the measured length (capped at an hour, like the server) and
+  /// stops listening. Best-effort: losing it never affects the lead.
+  @visibleForTesting
+  Future<void> finishCallTiming({DateTime? endedAt}) async {
+    final leadId = _timedLeadId;
+    final startedAt = _callStartedAt;
+
+    _timedLeadId = null;
+    _callStartedAt = null;
+    _leftAppForCall = false;
+    WidgetsBinding.instance.removeObserver(this);
+
+    if (leadId == null || startedAt == null) {
+      return;
+    }
+
+    final seconds = (endedAt ?? DateTime.now()).difference(startedAt).inSeconds.clamp(0, 3600);
+
+    try {
+      await DataSource.instance.recordLeadDurationAPI(leadId: leadId, durationSeconds: seconds);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Record call duration error $e');
+      }
+    }
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.onClose();
   }
 
   Future<void> whatsappAPI() async {
@@ -124,9 +199,9 @@ class VendorDetailController extends GetxController {
       return;
     }
 
-    final leadWritten = await _recordLead('whatsapp');
+    final leadId = await _recordLead('whatsapp');
 
-    if (!leadWritten) {
+    if (leadId == null) {
       return;
     }
 
@@ -135,16 +210,16 @@ class VendorDetailController extends GetxController {
   }
 
   /// The single chokepoint SPEC section 4 item 7's ordering rule runs
-  /// through: writes the lead and returns whether it durably succeeded.
-  /// Callers must not open the dialer/WhatsApp intent when this returns
-  /// false — the write failing is surfaced as an error, not swallowed.
-  Future<bool> _recordLead(String channel) async {
+  /// through: writes the lead and returns its id, or null when it did not
+  /// durably succeed. Callers must not open the dialer/WhatsApp intent on
+  /// null — the write failing is surfaced as an error, not swallowed.
+  Future<int?> _recordLead(String channel) async {
     final effectiveSubcategoryId = subcategoryId ??
         (vendor != null && vendor!.services.isNotEmpty ? vendor!.services.first.subcategoryId : null);
 
     if (effectiveSubcategoryId == null) {
       Utils.showToast(tr(StringRes.leadFailedTryAgain), isError: true);
-      return false;
+      return null;
     }
 
     isSubmittingLead = true;
@@ -160,16 +235,19 @@ class VendorDetailController extends GetxController {
 
       if (response == null || !response.isSuccess) {
         Utils.showToast(tr(StringRes.leadFailedTryAgain), isError: true);
-        return false;
+        return null;
       }
 
-      return true;
+      final data = response.data;
+      // An id is always returned; 0 only if a malformed response somehow
+      // succeeded — the call still goes ahead, just untimed.
+      return data is Map<String, dynamic> ? (data['id'] as int? ?? 0) : 0;
     } catch (e) {
       if (kDebugMode) {
         print('Record lead error $e');
       }
       Utils.showToast(tr(StringRes.leadFailedTryAgain), isError: true);
-      return false;
+      return null;
     } finally {
       isSubmittingLead = false;
       update();

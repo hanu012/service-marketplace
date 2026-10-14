@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\PlanResource\Pages;
 
 use App\Filament\Resources\PlanResource;
+use App\Filament\Support\RecordStatus;
 use App\Models\Plan;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\EditRecord;
 
 class EditPlan extends EditRecord
@@ -14,7 +16,21 @@ class EditPlan extends EditRecord
     {
         // No DeleteAction — subscriptions.plan_id is ON DELETE RESTRICT, so
         // the database refuses anyway. See PlanResource's docblock.
-        return [];
+        return [
+            RecordStatus::configure(
+                Action::make('changeStatus'),
+                fn (Plan $record): string => PlanResource::statusEffects($record),
+            ),
+        ];
+    }
+
+    public function getSubheading(): ?string
+    {
+        return RecordStatus::summary(
+            $this->getRecord(),
+            'offered to salesmen and vendors for new subscriptions.',
+            'not offered for new subscriptions. Running ones continue to expiry.',
+        );
     }
 
     /**

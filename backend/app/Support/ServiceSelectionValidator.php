@@ -81,6 +81,11 @@ final class ServiceSelectionValidator
         $leafZoneIds = Zone::query()
             ->whereIn('id', $zoneIds)->active()
             ->whereDoesntHave('children')
+            // Effective active status, same rule as ZoneMatcher: a leaf
+            // under a draft city is never matched in search, so it must not
+            // be subscribable either.
+            ->where(fn ($query) => $query->whereNull('parent_id')
+                ->orWhereHas('parent', fn ($parent) => $parent->where('is_active', true)))
             ->pluck('id')->all();
 
         if (count($leafZoneIds) !== count(array_unique($zoneIds))) {

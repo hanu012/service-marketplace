@@ -41,6 +41,7 @@ class _PagedVendorSearchDataSource extends DataSource {
     String? pincode,
     int page = 1,
     int perPage = 15,
+    String? sort,
   }) async {
     capturedPages!.add(page);
 

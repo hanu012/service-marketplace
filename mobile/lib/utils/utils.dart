@@ -9,6 +9,7 @@ import '../constants/color_res.dart';
 import '../constants/constant.dart';
 import '../constants/pref_keys.dart';
 import '../constants/string_res.dart';
+import '../network/data_source.dart';
 import '../widgets/base_text.dart';
 import 'injector.dart';
 
@@ -20,6 +21,108 @@ class Utils {
   /// Navigator key, also used by [getSize] to tell whether the widget tree is
   /// mounted yet.
   static final GlobalKey<NavigatorState> key = GlobalKey<NavigatorState>();
+
+  /// The languages the admin has switched on (Settings → App). Falls back
+  /// to every bundled language if the server can't be reached, so the
+  /// picker still works offline.
+  /// Reads the admin's app switches from GET settings and remembers them
+  /// on the device. Called without awaiting at startup, so a slow or
+  /// failed request just keeps the last known values.
+  static Future<void> refreshAppSettings() async {
+    try {
+      final response = await DataSource.instance.settingsAPI();
+
+      if (!(response?.isSuccess ?? false) || response!.data is! Map<String, dynamic>) {
+        return;
+      }
+
+      final callTracking = (response.data as Map<String, dynamic>)['call_tracking_enabled'];
+
+      if (callTracking is bool) {
+        Injector.callTrackingEnabled = callTracking;
+        await Injector.prefs?.setBool(PrefKeys.callTrackingEnabled, callTracking);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('App settings error $e');
+      }
+    }
+  }
+
+  /// "~3 min" / "<1 min" for an approximate call length; empty when there
+  /// is none (WhatsApp, or not reported).
+  static String approxCallLength(int? seconds) {
+    if (seconds == null) {
+      return '';
+    }
+
+    final unit = tr(StringRes.minutesShort);
+
+    if (seconds < 60) {
+      return '<1 $unit';
+    }
+
+    return '~${(seconds / 60).round()} $unit';
+  }
+
+  static Future<List<String>> enabledLanguages() async {
+    try {
+      final response = await DataSource.instance.settingsAPI();
+      final codes = (response?.isSuccess ?? false)
+          ? (response!.data as Map<String, dynamic>)['enabled_languages']
+          : null;
+
+      if (codes is List) {
+        final enabled = codes
+            .whereType<String>()
+            .where(Constants.languages.containsKey)
+            .toList();
+
+        if (enabled.isNotEmpty) {
+          return enabled;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Enabled languages error $e');
+      }
+    }
+
+    return Constants.languages.keys.toList();
+  }
+
+  /// Moves the app back to English if the admin has since switched off
+  /// the language it is using. Called once at startup, off the critical
+  /// path — the app opens in the saved language either way.
+  static Future<void> enforceEnabledLanguage() async {
+    if (Injector.language == Constants.english) {
+      return;
+    }
+
+    final enabled = await enabledLanguages();
+
+    if (!enabled.contains(Injector.language)) {
+      await applyLanguage(Constants.english);
+    }
+  }
+
+  /// Switches every screen to [code] and remembers it on this device.
+  /// The device copy is the one that decides the next launch; the server
+  /// copy (PATCH user/preferences) is saved by the caller, best-effort.
+  static Future<void> applyLanguage(String code) async {
+    if (!Constants.languages.containsKey(code)) {
+      return;
+    }
+
+    await Injector.setLanguage(code);
+
+    final context = key.currentContext;
+    if (context != null && context.mounted) {
+      await context.setLocale(Locale(code));
+    }
+
+    await Get.updateLocale(Locale(code));
+  }
 
   static double getScreenWidth(BuildContext context) => Get.width;
 
@@ -34,20 +137,43 @@ class Utils {
   /// Returns the raw value before the navigator is mounted, because Get.width
   /// is not available then.
   static double getSize(double px) {
-    if (Utils.key.currentState != null) {
-      return px * (Get.width / 414);
+    // The navigator check must come FIRST and stay a separate statement:
+    // Get.width throws outside a running app (it null-checks the view), so
+    // reading it before this guard breaks every widget test that builds a
+    // Base* widget without pumping a GetMaterialApp.
+    if (Utils.key.currentState == null) {
+      return px;
     }
-    return px;
+
+    // Even with a navigator mounted, Get.width is 0 until the platform
+    // reports a surface size, which lands after the warm-up frame. Scaling
+    // by 0 collapses every sized value — which asserts on params that
+    // require a positive number (IconButton.splashRadius) and silently
+    // disappears everywhere else.
+    final width = Get.width;
+
+    return width > 0 ? px * (width / 414) : px;
   }
 
   /// Font sizes scale more gently than layout so text stays legible on small
   /// screens without overflowing on large ones.
   static double getFontSize(double px) {
-    if (Utils.key.currentState != null) {
-      final scale = (Get.width / 414).clamp(0.85, 1.15);
-      return px * scale;
+    // Same ordering requirement as getSize() above.
+    if (Utils.key.currentState == null) {
+      return px;
     }
-    return px;
+
+    final width = Get.width;
+
+    if (width <= 0) {
+      return px;
+    }
+
+    // The trailing +2 matches the provider app's getFontSize, so the same
+    // design size renders the same in both apps. The clamp stays as a
+    // guard for tablets and wide web frames, where the provider's
+    // unclamped formula grows text without limit.
+    return px * (width / 414).clamp(0.85, 1.15) + 2;
   }
 
   /// Blocking progress overlay.
@@ -108,7 +234,9 @@ class Utils {
   static void showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
-      backgroundColor: isError ? ColorRes.errorColor : ColorRes.surfaceElevatedColor,
+      // Dark ink, not surfaceElevatedColor: that was a dark fill under the
+      // old theme but is near-white now, which hid the white text entirely.
+      backgroundColor: isError ? ColorRes.errorColor : ColorRes.secondaryColor,
       textColor: ColorRes.whiteColor,
     );
   }
@@ -121,6 +249,74 @@ class Utils {
   /// bitmap. That asset is light-blue branding and does not exist here, so the
   /// header is a teal-to-slate gradient instead — same layout, no asset, and
   /// it recolours with the palette rather than needing a new export.
+  /// Paise → "₹1,234.50".
+  ///
+  /// Money is stored as integer paise everywhere (CLAUDE.md), so every
+  /// screen that shows an amount has to divide by 100 — doing it inline is
+  /// how two screens end up disagreeing about the same figure.
+  static String rupees(int paise) {
+    final rupees = paise / 100;
+    final fixed = rupees.toStringAsFixed(2);
+    final parts = fixed.split('.');
+
+    return '₹${_withThousandsSeparators(parts[0])}.${parts[1]}';
+  }
+
+  /// Paise → "₹2,499", dropping a zero paise part.
+  ///
+  /// Plan prices are whole rupees in practice and the headline figure on a
+  /// pricing card reads better without a permanent ".00" hanging off it.
+  /// A price that genuinely has paise still shows them rather than being
+  /// silently rounded — a wrong price is worse than an untidy one.
+  static String rupeesWhole(int paise) {
+    if (paise % 100 != 0) {
+      return rupees(paise);
+    }
+
+    return '₹${_withThousandsSeparators((paise ~/ 100).toString())}';
+  }
+
+  /// Paise → "₹12k" for a stat tile, where the exact figure matters less
+  /// than fitting in the box. Falls back to the full form under ₹1,000.
+  static String compactRupees(int paise) {
+    final rupees = paise / 100;
+
+    if (rupees >= 10000000) {
+      return '₹${(rupees / 10000000).toStringAsFixed(1)}Cr';
+    }
+    if (rupees >= 100000) {
+      return '₹${(rupees / 100000).toStringAsFixed(1)}L';
+    }
+    if (rupees >= 1000) {
+      return '₹${(rupees / 1000).toStringAsFixed(rupees % 1000 == 0 ? 0 : 1)}k';
+    }
+
+    return '₹${rupees.toStringAsFixed(0)}';
+  }
+
+  /// Indian grouping — 12,34,567 rather than 1,234,567: the last three
+  /// digits, then twos.
+  static String _withThousandsSeparators(String digits) {
+    if (digits.length <= 3) {
+      return digits;
+    }
+
+    final last3 = digits.substring(digits.length - 3);
+    var rest = digits.substring(0, digits.length - 3);
+    final groups = <String>[];
+
+    while (rest.length > 2) {
+      groups.insert(0, rest.substring(rest.length - 2));
+      rest = rest.substring(0, rest.length - 2);
+    }
+
+    if (rest.isNotEmpty) {
+      groups.insert(0, rest);
+    }
+
+    return '${groups.join(',')},$last3';
+  }
+
   static Widget authLayout({
     required Widget contentWidget,
     required String title,
@@ -146,9 +342,11 @@ class Utils {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              // Stays dark end to end: the title and subtitle are white,
+              // and the old fade to the white surface swallowed them.
               colors: [
+                ColorRes.primaryColor,
                 ColorRes.primaryColorDark,
-                ColorRes.surfaceColor,
               ],
             ),
           ),
@@ -175,8 +373,8 @@ class Utils {
                     Flexible(
                       child: BaseTextDMSans(
                         text: title,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
                         color: ColorRes.whiteColor,
                         textAlign: TextAlign.start,
                         maxLines: 2,
@@ -218,9 +416,9 @@ class Utils {
                 8.heightSpacer,
                 BaseTextDMSans(
                   text: desc,
-                  fontWeight: FontWeight.w300,
-                  fontSize: 14,
-                  color: ColorRes.grayColor,
+                  fontWeight: FontWeight.w400,
+                  fontSize: 12,
+                  color: ColorRes.whiteColor.withValues(alpha: 0.85),
                   textAlign: TextAlign.start,
                   maxLines: 3,
                 ).tr(),

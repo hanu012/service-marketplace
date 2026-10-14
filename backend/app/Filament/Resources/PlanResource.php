@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\TranslatableInput;
 use App\Filament\Resources\PlanResource\Pages;
+use App\Filament\Support\RecordStatus;
 use App\Models\Plan;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Section;
@@ -11,11 +13,15 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
 use Filament\Forms\Set;
+use Filament\Infolists\Components\Section as InfoSection;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
+use Filament\Tables\Actions\Action as TableAction;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Columns\ViewColumn;
-use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Number;
@@ -52,15 +58,21 @@ class PlanResource extends Resource
             Section::make('Plan')
                 ->columns(2)
                 ->schema([
-                    TextInput::make('name')
-                        ->required()
-                        ->maxLength(255)
-                        ->live(onBlur: true)
-                        ->afterStateUpdated(function (string $operation, $state, Set $set) {
-                            if ($operation === 'create') {
-                                $set('slug', Str::slug((string) $state));
-                            }
-                        }),
+                    TranslatableInput::make('name', 'Name', function (string $language) {
+                        $input = TextInput::make($language)->maxLength(255);
+
+                        if ($language !== 'en') {
+                            return $input;
+                        }
+
+                        return $input
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (string $operation, $state, Set $set) {
+                                if ($operation === 'create') {
+                                    $set('../slug', Str::slug((string) $state));
+                                }
+                            });
+                    }, required: true)->columnSpanFull(),
 
                     TextInput::make('slug')
                         ->required()
@@ -95,12 +107,18 @@ class PlanResource extends Resource
                         ->minValue(1)
                         ->helperText('The server computes end_date as start + this many days.'),
 
-                    Textarea::make('description')
-                        ->rows(2)
-                        ->columnSpanFull(),
+                    TranslatableInput::make(
+                        'description',
+                        'Description',
+                        fn (string $language) => Textarea::make($language)->rows(2),
+                    )->columnSpanFull(),
 
+                    // Starting status only; afterwards "Change status", with a
+                    // reason. Hidden on edit, not disabled — CLAUDE.md.
                     Toggle::make('is_active')
+                        ->label('Active')
                         ->default(true)
+                        ->hiddenOn('edit')
                         ->helperText('Inactive plans are hidden from new subscriptions. Existing ones keep running.'),
                 ]),
 
@@ -172,10 +190,14 @@ class PlanResource extends Resource
         return $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
+            // A row click opens the read-only view, not the edit form.
+            ->recordUrl(null)
+            ->recordAction('view')
             ->columns([
                 TextColumn::make('name')
-                    ->searchable()
-                    ->sortable()
+                    ->searchable(query: \App\Support\TranslatableColumn::search('name'))
+                    ->sortable(query: \App\Support\TranslatableColumn::sort('name'))
+                    ->weight('bold')
                     ->description(fn (Plan $record): ?string => $record->description),
 
                 TextColumn::make('price_paise')
@@ -200,18 +222,29 @@ class PlanResource extends Resource
                     ->color(fn (Plan $record): string => $record->activeSubscriptionCount() > 0 ? 'success' : 'gray')
                     ->tooltip('Subscriptions currently running on this plan, and the all-time total.'),
 
-                ToggleColumn::make('is_active')
-                    ->label('Active'),
-            ])
-            ->filters([
-                TernaryFilter::make('is_active')
-                    ->label('Active')
-                    ->placeholder('All')
-                    ->trueLabel('Active only')
-                    ->falseLabel('Inactive only'),
+                RecordStatus::column(),
+
+                TextColumn::make('updated_at')
+                    ->label('Last modified')
+                    ->dateTime('d M Y, H:i')
+                    ->sortable()
+                    ->toggleable(),
             ])
             ->actions([
-                \Filament\Tables\Actions\EditAction::make(),
+                ViewAction::make()
+                    ->modalHeading(fn (Plan $record): string => $record->name)
+                    ->extraModalFooterActions(fn (ViewAction $action): array => [
+                        $action->makeModalAction('edit')
+                            ->label('Edit')
+                            ->icon('heroicon-o-pencil-square')
+                            ->color('primary')
+                            ->url(static::getUrl('edit', ['record' => $action->getRecord()])),
+                    ]),
+                EditAction::make(),
+                RecordStatus::configure(
+                    TableAction::make('changeStatus'),
+                    fn (Plan $record): string => static::statusEffects($record),
+                ),
                 // No DeleteAction — see the class docblock.
             ])
             ->bulkActions([
@@ -219,6 +252,73 @@ class PlanResource extends Resource
             ])
             ->emptyStateHeading('No plans yet')
             ->emptyStateDescription('A plan sets what a vendor may select and for how long. Add one before onboarding vendors.');
+    }
+
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        $paise = fn (?int $state): string => Number::currency(($state ?? 0) / 100, 'INR');
+
+        return $infolist->schema([
+            InfoSection::make('Basic details')
+                ->collapsible()
+                ->columns(4)
+                ->schema([
+                    TextEntry::make('name')->weight('bold'),
+                    TextEntry::make('price_paise')->label('Price')->formatStateUsing($paise),
+                    TextEntry::make('duration_days')->label('Duration')->suffix(' days'),
+                    RecordStatus::entry(),
+                    TextEntry::make('slug'),
+                    TextEntry::make('sort_order')->label('Display order'),
+                    TextEntry::make('description')->columnSpan(2)->placeholder('—'),
+                ]),
+
+            InfoSection::make('Limits')
+                ->collapsible()
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('quota.max_categories')->label('Max categories'),
+                    TextEntry::make('quota.max_subcategories')->label('Max subcategories'),
+                    TextEntry::make('quota.max_zones')->label('Max zones'),
+                    TextEntry::make('quota.max_photos')->label('Max photos'),
+                    TextEntry::make('quota.max_videos')->label('Max videos'),
+                    TextEntry::make('quota.priority_rank')
+                        ->label('Priority rank')
+                        ->helperText('Higher ranks are listed first in customer search.'),
+                ]),
+
+            InfoSection::make('Add-on pricing')
+                ->collapsible()
+                ->collapsed()
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('quota.addon_price_per_category_paise')->label('Per extra category')->formatStateUsing($paise),
+                    TextEntry::make('quota.addon_price_per_subcategory_paise')->label('Per extra subcategory')->formatStateUsing($paise),
+                    TextEntry::make('quota.addon_price_per_zone_paise')->label('Per extra zone')->formatStateUsing($paise),
+                    TextEntry::make('quota.addon_price_per_photo_paise')->label('Per extra photo')->formatStateUsing($paise),
+                    TextEntry::make('quota.addon_price_per_video_paise')->label('Per extra video')->formatStateUsing($paise),
+                ]),
+
+            InfoSection::make('Usage')
+                ->collapsible()
+                ->schema([
+                    TextEntry::make('in_use')
+                        ->label('Subscriptions')
+                        ->state(fn (Plan $record): string => static::inUseLabel($record)),
+                ]),
+
+            RecordStatus::recordSection(),
+        ]);
+    }
+
+    public static function statusEffects(Plan $record): string
+    {
+        $active = $record->activeSubscriptionCount();
+
+        return 'Active: offered to salesmen and vendors for new subscriptions. '
+            .'Inactive: no longer offered. '
+            .($active === 0
+                ? 'No subscriptions are running on it.'
+                : $active.' running '.Str::plural('subscription', $active).' keep going until they expire either way.');
     }
 
     /**

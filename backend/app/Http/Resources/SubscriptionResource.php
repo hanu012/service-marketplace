@@ -38,6 +38,10 @@ class SubscriptionResource extends JsonResource
                     'mode' => $payment->mode,
                     'amount_paise' => $payment->amount_paise,
                     'status' => $payment->status,
+                    // Set only while Razorpay is on. For a pending payment
+                    // the app shows and shares this link.
+                    'payment_link_url' => $payment->payment_link_url,
+                    'payment_link_expires_at' => $payment->payment_link_expires_at?->toIso8601String(),
                 ];
             }),
             'commission' => $this->whenLoaded('commission', fn () => $this->commission === null ? null : [

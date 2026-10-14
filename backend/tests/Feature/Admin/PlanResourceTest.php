@@ -36,7 +36,7 @@ class PlanResourceTest extends TestCase
         // Quota fields sit under a `quota` state path: Fieldset->relationship()
         // calls statePath($name), so they are nested rather than flat.
         return array_merge([
-            'name' => 'Growth',
+            'name' => ['en' => 'Growth'],
             'slug' => 'growth',
             'price_rupees' => '999.00',
             'duration_days' => 365,
@@ -108,15 +108,23 @@ class PlanResourceTest extends TestCase
             ->assertActionDoesNotExist('delete');
     }
 
-    public function test_the_active_toggle_flips_the_record(): void
+    public function test_change_status_flips_the_record(): void
     {
         $plan = Plan::factory()->create(['is_active' => true]);
 
         Livewire::test(ListPlans::class)
-            ->assertTableColumnStateSet('is_active', true, $plan)
-            ->call('updateTableColumnState', 'is_active', (string) $plan->getKey(), false);
+            ->assertTableColumnFormattedStateSet('is_active', 'Active', $plan)
+            ->callTableAction('changeStatus', $plan, data: [
+                'is_active' => '0',
+                'reason' => 'Replaced by the 2027 pricing.',
+            ])
+            ->assertHasNoTableActionErrors();
 
         $this->assertFalse($plan->fresh()->is_active);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'status_changed',
+            'auditable_id' => $plan->getKey(),
+        ]);
     }
 
     public function test_reordering_writes_sort_order(): void

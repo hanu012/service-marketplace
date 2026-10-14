@@ -67,21 +67,29 @@ class ZoneResourceTest extends TestCase
     }
 
     /**
-     * Same shape as CategoryResourceTest: drive updateTableColumnState, then
-     * read the value back from the database rather than trusting the
+     * Status changes go through the reasoned "Change status" action; the
+     * value is read back from the database rather than trusting the
      * component.
      */
-    public function test_the_active_toggle_flips_the_record(): void
+    public function test_change_status_flips_the_record(): void
     {
         $zone = Zone::factory()->create();
 
         $this->assertFalse($zone->is_active);
 
         Livewire::test(ListZones::class)
-            ->assertTableColumnStateSet('is_active', false, $zone)
-            ->call('updateTableColumnState', 'is_active', (string) $zone->getKey(), true);
+            ->assertTableColumnFormattedStateSet('is_active', 'Draft', $zone)
+            ->callTableAction('changeStatus', $zone, data: [
+                'is_active' => '1',
+                'reason' => 'Boundary checked against the map.',
+            ])
+            ->assertHasNoTableActionErrors();
 
         $this->assertTrue($zone->fresh()->is_active);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'status_changed',
+            'auditable_id' => $zone->getKey(),
+        ]);
     }
 
     public function test_a_zone_can_be_drawn_and_saved_as_a_draft(): void
@@ -204,6 +212,49 @@ class ZoneResourceTest extends TestCase
         $this->assertDatabaseMissing('zones', ['slug' => 'gota-north']);
     }
 
+    public function test_a_first_sub_zone_under_a_directly_subscribed_zone_is_rejected(): void
+    {
+        // Making a subscribed leaf into a parent would drop its vendors out
+        // of search, since only leaves are ever matched.
+        $standalone = Zone::factory()->active()->create(['name' => 'Sanand']);
+
+        $vendorUser = User::factory()->role(UserRole::Vendor)->create();
+        $vendor = \App\Models\Vendor::create([
+            'user_id' => $vendorUser->id,
+            'business_name' => 'Sanand Cooling',
+            'owner_name' => 'Asha Patel',
+            'phone' => '9812345670',
+            'status' => 'active',
+        ]);
+        $plan = \App\Models\Plan::factory()->create();
+        $subscription = \App\Models\Subscription::create([
+            'vendor_id' => $vendor->id,
+            'plan_id' => $plan->id,
+            'source' => 'self',
+            'status' => 'active',
+            'start_date' => now(),
+            'end_date' => now()->addDays(300),
+            'price_paise' => $plan->price_paise,
+            'duration_days' => $plan->duration_days,
+            'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+        ]);
+        \App\Models\SubscriptionItem::insert([
+            ['subscription_id' => $subscription->id, 'item_type' => 'zone', 'item_id' => $standalone->id, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        Livewire::test(CreateZone::class)
+            ->fillForm([
+                'name' => 'Sanand GIDC',
+                'slug' => 'sanand-gidc',
+                'parent_id' => $standalone->id,
+                'polygon_points' => ZoneFactory::square(-33.0, -70.0),
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['parent_id']);
+
+        $this->assertDatabaseMissing('zones', ['slug' => 'sanand-gidc']);
+    }
+
     public function test_a_sub_zone_under_a_top_level_zone_is_allowed(): void
     {
         $city = Zone::factory()->create(['name' => 'Ahmedabad']);
@@ -219,6 +270,38 @@ class ZoneResourceTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertDatabaseHas('zones', ['slug' => 'ranip', 'parent_id' => $city->id]);
+    }
+
+    public function test_editing_the_boundary_persists_the_new_polygon(): void
+    {
+        $zone = Zone::factory()->create(['name' => 'Naranpura']);
+
+        $before = DB::table('zones')
+            ->selectRaw('ST_AsText(polygon) as wkt')
+            ->where('id', $zone->getKey())
+            ->value('wkt');
+
+        // A boundary somewhere clearly different from the factory's.
+        $moved = ZoneFactory::square(23.06, 72.56);
+
+        Livewire::test(EditZone::class, ['record' => $zone->getKey()])
+            ->fillForm(['polygon_points' => $moved])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $after = DB::table('zones')
+            ->selectRaw('ST_AsText(polygon) as wkt')
+            ->where('id', $zone->getKey())
+            ->value('wkt');
+
+        $this->assertNotSame($before, $after, 'The stored boundary did not change.');
+
+        // And it round-trips back into the map as the points just saved.
+        $this->assertEqualsWithDelta(
+            $moved[0]['lat'],
+            Zone::pointsFromWkt($after)[0]['lat'],
+            0.0001,
+        );
     }
 
     public function test_a_zone_with_children_cannot_be_given_a_parent(): void

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\UserRole;
 use App\Models\Commission;
+use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Salesman;
 use App\Models\Subscription;
@@ -12,6 +13,7 @@ use App\Models\SubscriptionItem;
 use App\Models\User;
 use App\Models\Vendor;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Subscribing a vendor to a plan (SPEC section 6) — salesman/admin-led
@@ -85,6 +87,10 @@ class SubscriptionService
 
             $isFreeTrial = $paymentMode === 'free';
 
+            // One live payment link per vendor: an earlier unpaid sale is
+            // withdrawn first, so both can never be paid.
+            $this->releasePendingSales($vendor->id);
+
             // Server computes price and dates from the plan — never trusts
             // a client-sent amount or end_date (SPEC section 6.1). A free
             // trial overrides both: it costs nothing and runs for the
@@ -113,28 +119,38 @@ class SubscriptionService
             $this->recordItems($subscription, 'subcategory', $subcategoryIds);
             $this->recordItems($subscription, 'zone', $zoneIds);
 
+            $payment = null;
+
             if ($isFreeTrial) {
                 $this->payments->recordFreeTrial($subscription);
             } elseif ($paymentMode === 'cash') {
                 $this->payments->payViaCash($subscription, $pricePaise, $salesman);
             } else {
-                $this->payments->payOnline($subscription, $pricePaise);
+                $payment = $this->payments->payOnline($subscription, $pricePaise);
             }
 
-            // SPEC section 12: only a salesman-sourced, PAID sale earns
-            // commission — never a free trial, never source = admin (the
-            // subscriptions migration is explicit: salesman_id is null for
-            // admin-created rows, so there is no salesman to credit).
-            if ($isSalesman && ! $isFreeTrial && $salesman !== null) {
-                $this->recordCommission($subscription, $salesman, $pricePaise);
-            }
+            if ($payment?->isPending()) {
+                // A Razorpay link is out and unpaid. Nothing goes live yet —
+                // no commission, vendor still draft, and pending_payment is
+                // outside every active/grace check — until the webhook calls
+                // completeOnlinePayment(), which does all of it then.
+                $subscription->update(['status' => 'pending_payment']);
+            } else {
+                // SPEC section 12: only a salesman-sourced, PAID sale earns
+                // commission — never a free trial, never source = admin (the
+                // subscriptions migration is explicit: salesman_id is null for
+                // admin-created rows, so there is no salesman to credit).
+                if ($isSalesman && ! $isFreeTrial && $salesman !== null) {
+                    $this->recordCommission($subscription, $salesman, $pricePaise);
+                }
 
-            // Salesman/admin-added vendors skip KYC review (SPEC section 7)
-            // — met in person, straight to Active. A self-registered vendor
-            // subscribing themselves has NOT been met in person, so SPEC
-            // section 7 routes them to pending_verification instead, to be
-            // approved through the Vendor Verification Queue.
-            $vendor->update(['status' => $isVendorSelf ? 'pending_verification' : 'active']);
+                // Salesman/admin-added vendors skip KYC review (SPEC section 7)
+                // — met in person, straight to Active. A self-registered vendor
+                // subscribing themselves has NOT been met in person, so SPEC
+                // section 7 routes them to pending_verification instead, to be
+                // approved through the Vendor Verification Queue.
+                $vendor->update(['status' => $this->vendorStatusAfterPayment($subscription)]);
+            }
 
             // The draft-stage password is unusable by design (a random
             // string nobody was given — see VendorDraftService::create()),
@@ -217,6 +233,8 @@ class SubscriptionService
             $isFreeTrial = $paymentMode === 'free';
             $today = now()->startOfDay();
 
+            $this->releasePendingSales($current->vendor_id);
+
             // Decision 1: the credit is a price reduction, never a
             // duration extension — the new subscription always runs the
             // new plan's own standard duration_days.
@@ -248,27 +266,155 @@ class SubscriptionService
             $this->recordItems($newSubscription, 'subcategory', $subcategoryIds);
             $this->recordItems($newSubscription, 'zone', $zoneIds);
 
+            $payment = null;
+
             if ($isFreeTrial) {
                 $this->payments->recordFreeTrial($newSubscription);
             } elseif ($paymentMode === 'cash') {
                 $this->payments->payViaCash($newSubscription, $amountDuePaise, $salesman);
             } else {
-                $this->payments->payOnline($newSubscription, $amountDuePaise);
+                $payment = $this->payments->payOnline($newSubscription, $amountDuePaise);
             }
 
-            if ($isSalesman && ! $isFreeTrial && $salesman !== null) {
-                $this->recordCommission($newSubscription, $salesman, $amountDuePaise);
-            }
+            if ($payment?->isPending()) {
+                // The current plan keeps running until the new one is paid
+                // for; completeOnlinePayment() supersedes it then.
+                $newSubscription->update(['status' => 'pending_payment']);
+            } else {
+                if ($isSalesman && ! $isFreeTrial && $salesman !== null) {
+                    $this->recordCommission($newSubscription, $salesman, $amountDuePaise);
+                }
 
-            // Decision 6: a distinct terminal state from `cancelled` —
-            // this row wasn't churn, it was replaced.
-            $current->update(['status' => 'superseded', 'end_date' => $today]);
+                // Decision 6: a distinct terminal state from `cancelled` —
+                // this row wasn't churn, it was replaced.
+                $current->update(['status' => 'superseded', 'end_date' => $today]);
+            }
 
             return [
                 'subscription' => $newSubscription,
                 'previous_subscription' => $current,
             ];
         });
+    }
+
+    /**
+     * Renewal — a vendor who already had a plan buys another: early while
+     * still active, during grace, or after it expired (RenewSubscriptionRequest
+     * decides who qualifies). Any plan may be chosen, so this also covers
+     * moving to a different plan at renewal time.
+     *
+     * Dates: the new term runs from the day after the current plan would
+     * have ended, so renewing early never loses paid-for days; from grace or
+     * expired it runs from today. The replaced plan is marked superseded so
+     * a vendor never has two live plans (search joins assume one).
+     *
+     * No temporary password and no free trial — unlike subscribe(), the
+     * vendor already has an account and has had a plan. Commission is
+     * earned like any paid salesman sale. A Razorpay-held renewal does all
+     * of this on payment instead (completeOnlinePayment()).
+     *
+     * @param  array<int, int>  $categoryIds
+     * @param  array<int, int>  $subcategoryIds
+     * @param  array<int, int>  $zoneIds
+     */
+    public function renew(
+        Vendor $vendor,
+        Plan $plan,
+        array $categoryIds,
+        array $subcategoryIds,
+        array $zoneIds,
+        string $paymentMode,
+        User $actor,
+        string $idempotencyKey,
+    ): Subscription {
+        return DB::transaction(function () use (
+            $vendor, $plan, $categoryIds, $subcategoryIds, $zoneIds, $paymentMode, $actor, $idempotencyKey,
+        ) {
+            $isSalesman = $actor->role === UserRole::Salesman;
+            $salesman = $isSalesman ? $actor->salesman : null;
+
+            $source = match ($actor->role) {
+                UserRole::Salesman => 'salesman',
+                UserRole::Vendor => 'self',
+                default => 'admin',
+            };
+
+            $this->releasePendingSales($vendor->id);
+
+            // The plan being renewed: the live one if there is one,
+            // otherwise the most recent that ran (for the history link).
+            $current = $vendor->subscriptions()
+                ->whereIn('status', ['active', 'grace'])
+                ->latest('end_date')
+                ->first();
+            $previous = $current ?? $vendor->subscriptions()
+                ->whereIn('status', ['expired', 'superseded', 'cancelled'])
+                ->latest('end_date')
+                ->first();
+
+            $today = now()->startOfDay();
+            $endDate = $this->renewalTermStart($current, $today)->addDays($plan->duration_days);
+
+            $subscription = Subscription::create([
+                'vendor_id' => $vendor->id,
+                'plan_id' => $plan->id,
+                'salesman_id' => $salesman?->id,
+                'source' => $source,
+                'status' => 'active',
+                'start_date' => $today,
+                'end_date' => $endDate,
+                'price_paise' => $plan->price_paise,
+                'duration_days' => $plan->duration_days,
+                'previous_subscription_id' => $previous?->id,
+                'is_renewal' => true,
+                'idempotency_key' => $idempotencyKey,
+            ]);
+
+            $this->recordItems($subscription, 'category', $categoryIds);
+            $this->recordItems($subscription, 'subcategory', $subcategoryIds);
+            $this->recordItems($subscription, 'zone', $zoneIds);
+
+            $payment = $paymentMode === 'cash'
+                ? $this->payments->payViaCash($subscription, $plan->price_paise, $salesman)
+                : $this->payments->payOnline($subscription, $plan->price_paise);
+
+            if ($payment->isPending()) {
+                // Held for Razorpay: the current plan keeps running (and the
+                // vendor stays listed) until this is paid.
+                $subscription->update(['status' => 'pending_payment']);
+
+                return $subscription;
+            }
+
+            if ($salesman !== null) {
+                $this->recordCommission($subscription, $salesman, $plan->price_paise);
+            }
+
+            $current?->update(['status' => 'superseded', 'end_date' => $today]);
+
+            // Back to active from grace or expired. A vendor already active
+            // stays so.
+            $vendor->update(['status' => 'active']);
+
+            return $subscription;
+        });
+    }
+
+    /**
+     * Where a renewed term starts counting from: after the replaced plan's
+     * end date while that plan is still running, so early renewal keeps
+     * every paid day; otherwise today.
+     */
+    private function renewalTermStart(?Subscription $replaced, \Illuminate\Support\Carbon $today): \Illuminate\Support\Carbon
+    {
+        if ($replaced !== null
+            && in_array($replaced->status, ['active', 'grace'], true)
+            && $replaced->end_date !== null
+            && $replaced->end_date->gte($today)) {
+            return $replaced->end_date->copy()->startOfDay();
+        }
+
+        return $today->copy();
     }
 
     /**
@@ -313,11 +459,164 @@ class SubscriptionService
             if ($paymentMode === 'cash') {
                 $this->payments->payViaCash($subscription, $pricePaise, $subscription->salesman);
             } else {
-                $this->payments->payOnline($subscription, $pricePaise);
+                $payment = $this->payments->payOnline($subscription, $pricePaise, $addon);
+
+                // Not counted toward quota (Subscription::effectiveQuota
+                // sums paid add-ons only) until Razorpay confirms it.
+                if ($payment->isPending()) {
+                    $addon->forceFill(['status' => 'pending_payment'])->save();
+                }
             }
 
             return $addon;
         });
+    }
+
+    /**
+     * Razorpay reported the payment link paid (webhook). Does everything
+     * subscribe()/changePlan()/purchaseAddOn() held back for it.
+     *
+     * Idempotent: Razorpay retries webhooks, so a payment already captured
+     * is left alone. Row-locked so two deliveries racing cannot both
+     * activate.
+     */
+    public function completeOnlinePayment(Payment $payment, ?string $gatewayPaymentId): void
+    {
+        DB::transaction(function () use ($payment, $gatewayPaymentId) {
+            $payment = Payment::query()->lockForUpdate()->find($payment->id);
+
+            if ($payment === null || $payment->status === 'captured') {
+                return;
+            }
+
+            if ($payment->status !== 'pending') {
+                // Paid in the moment between the link being withdrawn (a
+                // newer sale, or expiry) and Razorpay noticing. The money is
+                // real, so it is recorded — but nothing is activated on top
+                // of the sale that replaced it. An admin refunds it.
+                $payment->forceFill([
+                    'status' => 'captured',
+                    'gateway_payment_id' => $gatewayPaymentId,
+                ])->save();
+
+                Log::critical('Razorpay payment captured for a withdrawn sale — refund needed', [
+                    'payment_id' => $payment->id,
+                    'gateway_payment_id' => $gatewayPaymentId,
+                ]);
+
+                return;
+            }
+
+            $payment->forceFill([
+                'status' => 'captured',
+                'gateway_payment_id' => $gatewayPaymentId,
+                'admin_verified_at' => now(),
+            ])->save();
+
+            if ($payment->subscription_addon_id !== null) {
+                $payment->addon?->forceFill(['status' => 'paid'])->save();
+
+                return;
+            }
+
+            $subscription = $payment->subscription;
+
+            if ($subscription === null || $subscription->status !== 'pending_payment') {
+                return;
+            }
+
+            // The term starts when it is paid for, not when the link went
+            // out — a vendor who pays a day late still gets the full term.
+            $today = now()->startOfDay();
+
+            $previous = $subscription->previous_subscription_id !== null
+                ? Subscription::query()->find($subscription->previous_subscription_id)
+                : null;
+            $previousLive = $previous !== null && in_array($previous->status, ['active', 'grace'], true);
+
+            $subscription->update([
+                'status' => 'active',
+                'start_date' => $today,
+                'end_date' => $this->renewalTermStart($subscription->is_renewal ? $previous : null, $today)
+                    ->addDays($subscription->duration_days),
+            ]);
+
+            if ($subscription->salesman !== null) {
+                $this->recordCommission($subscription, $subscription->salesman, $payment->amount_paise);
+            }
+
+            // A plan change or renewal: the plan it replaces ran until now.
+            if ($previousLive) {
+                $previous->update(['status' => 'superseded', 'end_date' => $today]);
+            }
+
+            if ($subscription->is_renewal) {
+                $subscription->vendor?->update(['status' => 'active']);
+            } elseif ($subscription->previous_subscription_id === null) {
+                $subscription->vendor?->update(['status' => $this->vendorStatusAfterPayment($subscription)]);
+            }
+        });
+    }
+
+    /**
+     * Razorpay reported the link expired or cancelled. The sale is off:
+     * the payment fails, a held subscription is cancelled, a held add-on
+     * is cancelled. A captured payment is never undone here.
+     */
+    public function failOnlinePayment(Payment $payment): void
+    {
+        DB::transaction(function () use ($payment) {
+            $payment = Payment::query()->lockForUpdate()->find($payment->id);
+
+            if ($payment === null || $payment->status !== 'pending') {
+                return;
+            }
+
+            $payment->forceFill(['status' => 'failed'])->save();
+
+            if ($payment->subscription_addon_id !== null) {
+                $payment->addon?->forceFill(['status' => 'cancelled'])->save();
+
+                return;
+            }
+
+            $payment->subscription()
+                ->where('status', 'pending_payment')
+                ->update(['status' => 'cancelled']);
+        });
+    }
+
+    /**
+     * Withdraws every unpaid sale for this vendor: the link is cancelled at
+     * Razorpay first (if that fails, the new sale is refused — see
+     * RazorpayClient::cancelPaymentLink), then the held subscription is
+     * cancelled. Lets a salesman switch an unpaid online sale to cash, and
+     * stops a vendor ever paying two links.
+     */
+    private function releasePendingSales(int $vendorId): void
+    {
+        $pending = Payment::query()
+            ->where('status', 'pending')
+            ->whereNull('subscription_addon_id')
+            ->whereHas('subscription', fn ($query) => $query
+                ->where('vendor_id', $vendorId)
+                ->where('status', 'pending_payment'))
+            ->get();
+
+        foreach ($pending as $payment) {
+            $this->payments->cancelOnline($payment);
+            $this->failOnlinePayment($payment);
+        }
+    }
+
+    /**
+     * SPEC section 7: salesman/admin-added vendors were met in person and go
+     * straight to active; a self-registered vendor goes to the verification
+     * queue.
+     */
+    private function vendorStatusAfterPayment(Subscription $subscription): string
+    {
+        return $subscription->source === 'self' ? 'pending_verification' : 'active';
     }
 
     /**
@@ -388,7 +687,9 @@ class SubscriptionService
             'item_id' => $id,
             'created_at' => now(),
             'updated_at' => now(),
-        ], $ids);
+        // Deduplicated: a repeated id passes validation (it is still a
+        // valid leaf) but would hit the subscription_items unique index.
+        ], array_values(array_unique($ids)));
 
         if ($rows !== []) {
             SubscriptionItem::insert($rows);

@@ -4,9 +4,10 @@ import 'package:get/get.dart';
 import 'package:service_marketplace/common_model/common_response.dart';
 import 'package:service_marketplace/constants/string_res.dart';
 import 'package:service_marketplace/network/data_source.dart';
+import 'package:service_marketplace/screens/auth_flow/vendor_dashboard_module/vendor_dashboard_controller.dart';
 import 'package:service_marketplace/screens/auth_flow/vendor_dashboard_module/vendor_dashboard_view.dart';
 import 'package:service_marketplace/screens/auth_flow/vendor_select_plan_module/vendor_select_plan_view.dart';
-import 'package:service_marketplace/widgets/base_button.dart';
+import 'package:service_marketplace/widgets/base_vendor.dart';
 
 /// Answers GET /api/vendors/me the way task 4.2's real endpoint does:
 /// active_subscription is null with no subscription, or plan/quota/days
@@ -15,8 +16,18 @@ class _RecordingVendorMeDataSource extends DataSource {
   bool hasActiveSubscription = true;
   bool fails = false;
 
+  /// Held open so a test can inspect the frame WHILE the request is in
+  /// flight. With an instantly-resolving fake the loading state is over
+  /// before the first pump, which is exactly the frame the refresh flash
+  /// happened on.
+  Duration delay = Duration.zero;
+
   @override
   Future<CommonResponse?> vendorMeAPI() async {
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
+
     if (fails) {
       return null;
     }
@@ -74,9 +85,12 @@ void main() {
     expect(find.text('Cool Air Services'), findsOneWidget);
     expect(find.text('Gold'), findsOneWidget);
     expect(find.text('45'), findsOneWidget);
-    expect(find.text('1 of 3'), findsOneWidget);
-    expect(find.text('2 of 6'), findsOneWidget);
-    expect(find.text('1 of 2'), findsOneWidget);
+    // Overview renders quota as a used/max pair per row rather than the
+    // old "1 of 3" sentence. findRichText because the pair is one
+    // RichText of two differently-styled spans, not two Text widgets.
+    expect(find.text('1 / 3', findRichText: true), findsOneWidget);
+    expect(find.text('2 / 6', findRichText: true), findsOneWidget);
+    expect(find.text('1 / 2', findRichText: true), findsOneWidget);
   });
 
   testWidgets('the Services tab shows the selected item names and remaining quota', (
@@ -95,12 +109,15 @@ void main() {
     expect(find.text('Gas Filling'), findsOneWidget);
     expect(find.text('Installation'), findsOneWidget);
     expect(find.text('Gota'), findsOneWidget);
-    // categories: 1 used of 3 max, 2 remaining.
-    expect(
-      find.text('1 ${tr(StringRes.of)} 3 (2 ${tr(StringRes.remainingLabel)})'),
-      findsOneWidget,
-    );
-    expect(find.byType(BaseRaisedButton), findsOneWidget);
+    // One "N of M used" line and one remaining-count badge per section —
+    // categories, subcategories and zones. Asserted by count rather than
+    // by value because this tree is not wrapped in EasyLocalization, so
+    // a parameterised key renders as the bare key with no args
+    // substituted; the counts themselves are covered by the Overview
+    // test above, which reads real numbers out of RichText.
+    expect(find.text(tr(StringRes.vendorUsedOf)), findsNWidgets(3));
+    expect(find.text(tr(StringRes.vendorLeftCount)), findsNWidgets(3));
+    expect(find.byType(VendorPrimaryButton), findsOneWidget);
   });
 
   testWidgets('no active subscription shows the fallback state with a way to subscribe', (
@@ -113,9 +130,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Cool Air Services'), findsNothing);
-    expect(find.byType(BaseRaisedButton), findsOneWidget);
+    expect(find.byType(VendorPrimaryButton), findsOneWidget);
 
-    await tester.tap(find.byType(BaseRaisedButton));
+    await tester.tap(find.byType(VendorPrimaryButton));
     await tester.pumpAndSettle();
 
     expect(find.byType(VendorSelectPlanView), findsOneWidget);
@@ -132,5 +149,48 @@ void main() {
 
     expect(find.byType(VendorDashboardView), findsOneWidget);
     expect(find.text('Cool Air Services'), findsNothing);
+  });
+
+  /// Refreshing must not make the screen claim the subscription vanished.
+  ///
+  /// `hasSubscription` used to be `!isLoading && subscription != null`.
+  /// A pull-to-refresh keeps the previous vendorMe and only flips
+  /// isLoading, so for the length of the round trip the dashboard and its
+  /// bottom bar were replaced by "You don't have an active subscription"
+  /// and then replaced back — a visible flash on every refresh.
+  testWidgets('refreshing an active dashboard never flashes the empty state', (
+    tester,
+  ) async {
+    final fake = _RecordingVendorMeDataSource();
+    DataSource.instance = fake;
+
+    await tester.pumpWidget(GetMaterialApp(home: const VendorDashboardView()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gold'), findsOneWidget);
+
+    final controller = Get.find<VendorDashboardController>();
+
+    // Hold the next response open so the in-flight frame can be read.
+    fake.delay = const Duration(milliseconds: 300);
+
+    final pending = controller.fetchVendorMeAPI();
+    await tester.pump();
+
+    // Mid-refresh: still loading, old data still held — the exact frame
+    // the empty state used to take over.
+    expect(controller.isLoading, isTrue);
+    expect(find.text(tr(StringRes.noActiveSubscription)), findsNothing);
+    expect(find.byType(VendorBottomNav), findsOneWidget);
+    expect(find.text('Gold'), findsOneWidget);
+
+    // pump(duration), not a bare await: the delayed response only fires
+    // when the test clock advances, so awaiting it directly would hang.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await pending;
+
+    expect(controller.isLoading, isFalse);
+    expect(find.text('Gold'), findsOneWidget);
   });
 }

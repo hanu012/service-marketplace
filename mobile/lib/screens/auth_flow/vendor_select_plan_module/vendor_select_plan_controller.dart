@@ -15,6 +15,11 @@ class VendorSelectPlanController extends GetxController {
   List<PlanModel> plans = [];
   int? selectedPlanId;
   int? vendorId;
+
+  /// The vendor already had a plan (active, grace or expired): the
+  /// services step renews instead of subscribing. A brand-new (draft)
+  /// vendor subscribes as before.
+  bool isRenewal = false;
   bool isLoading = false;
 
   @override
@@ -53,7 +58,9 @@ class VendorSelectPlanController extends GetxController {
           .map((e) => PlanModel.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      vendorId = VendorMeModel.fromJson(meResponse.data as Map<String, dynamic>).id;
+      final vendorMe = VendorMeModel.fromJson(meResponse.data as Map<String, dynamic>);
+      vendorId = vendorMe.id;
+      isRenewal = vendorMe.status != null && vendorMe.status != 'draft';
 
       selectedPlanId ??= plans.isEmpty ? null : plans.first.id;
     } catch (e) {
@@ -115,6 +122,6 @@ class VendorSelectPlanController extends GetxController {
       return;
     }
 
-    Get.to(() => VendorSelectServicesView(vendorId: vendorId!, plan: plan));
+    Get.to(() => VendorSelectServicesView(vendorId: vendorId!, plan: plan, isRenewal: isRenewal));
   }
 }
