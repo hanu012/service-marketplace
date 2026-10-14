@@ -1,0 +1,52 @@
+/*
+ * Admin layout tweaks on top of Filament's stock styles. Registered as a
+ * local asset in AdminPanelProvider (no CDN, no Tailwind build).
+ *
+ * Filament's app.css is emitted AFTER registered assets, so a plain
+ * selector here loses to its utility classes (.grid, .mx-auto) at equal
+ * specificity. Every rule is anchored on `.fi-body` to outrank them.
+ */
+
+/* Standalone tab bars (list-page filters, edit-page Account / More info /
+   Media, ...) span the full content width
+   instead of sitting as a centred pill; each tab shares the space. */
+.fi-body .fi-tabs:not(.fi-contained) {
+    width: 100%;
+    margin-inline: 0;
+}
+
+.fi-body .fi-tabs:not(.fi-contained) > .fi-tabs-item {
+    flex: 1 1 0;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+/* Table footer: "Showing x of y" on the left, page numbers next, and the
+   per-page selector always pinned to the far right (Filament centres it). */
+.fi-body .fi-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    row-gap: 0.75rem;
+}
+
+.fi-body .fi-pagination > .fi-pagination-overview,
+.fi-body .fi-pagination > .fi-pagination-previous-btn {
+    margin-inline-end: auto;
+}
+
+.fi-body .fi-pagination > .fi-pagination-items,
+.fi-body .fi-pagination > .fi-pagination-next-btn {
+    order: 2;
+}
+
+.fi-body .fi-pagination > div.col-start-2 {
+    order: 3;
+}
+
+/* Page description under the title uses the full content width instead
+   of Filament's max-w-2xl reading column. */
+.fi-body .fi-header-subheading {
+    max-width: none;
+}
